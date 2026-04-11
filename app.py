@@ -10,7 +10,10 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 
 # Configuração da base de dados
+# Render usa "postgres://" mas SQLAlchemy requer "postgresql://"
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///portfolio.db')
+if DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 db = SQLAlchemy(app)
 
