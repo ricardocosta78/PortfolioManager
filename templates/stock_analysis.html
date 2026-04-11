@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Informação Stock</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <style>
+      .container { width: 90%; margin: auto; padding: 20px; }
+      #content   { background: #fff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,.1); }
+
+      #tickerInput {
+        width: calc(100% - 130px); padding: 10px;
+        border: 1px solid #ddd; border-radius: 4px; font-size: 16px;
+      }
+      button {
+        padding: 12px 20px; background: #3498db; color: #fff;
+        border: none; border-radius: 4px; cursor: pointer;
+        font-size: 16px; transition: background .3s;
+      }
+      button:hover { background: #2980b9; }
+
+      /* ── Scoring panel ── */
+      .scoring-panel {
+        background: #fff; border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        padding: 20px; margin-top: 24px;
+      }
+      .scoring-header {
+        display: flex; align-items: center; gap: 20px;
+        border-bottom: 2px solid #3498db; padding-bottom: 14px; margin-bottom: 16px;
+      }
+      .score-circle {
+        width: 80px; height: 80px; border-radius: 50%;
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
+        font-weight: bold; color: #fff; flex-shrink: 0;
+      }
+      .score-circle .score-num  { font-size: 26px; line-height: 1; }
+      .score-circle .score-denom{ font-size: 13px; opacity: .85; }
+      .score-meta h3 { margin: 0 0 4px; font-size: 20px; color: #2c3e50; }
+      .score-meta p  { margin: 0; font-size: 13px; color: #7f8c8d; }
+
+      .criteria-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .criterion {
+        display: flex; align-items: flex-start; gap: 8px;
+        padding: 8px 10px; border-radius: 7px;
+        font-size: 13px; line-height: 1.35;
+      }
+      .criterion.pass { background: #eafaf1; }
+      .criterion.fail { background: #fdf2f2; }
+      .crit-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+      .crit-body { display: flex; flex-direction: column; }
+      .crit-label { font-weight: 600; color: #2c3e50; }
+      .crit-val   { color: #555; font-size: 12px; }
+      .crit-hint  { color: #888; font-size: 11px; font-style: italic; }
+
+      /* ── Results sections ── */
+      .results-container_title {
+        display: flex; justify-content: center; width: 100%; margin-top: 20px;
+      }
+      .results-container {
+        display: flex; justify-content: space-between; width: 100%; margin-top: 10px; flex-wrap: wrap;
+      }
+      .results-section {
+        width: 19%; display: flex; flex-direction: column;
+        margin-bottom: 20px; background: #f8f9fa;
+        padding: 10px; border-radius: 5px;
+        box-shadow: 0 0 5px rgba(0,0,0,.05); margin-top: 20px;
+      }
+      .results-section h2 {
+        color: #2c3e50; border-bottom: 2px solid #3498db;
+        padding-bottom: 5px; margin-top: 0; margin-bottom: 12px; font-size: 14px;
+      }
+
+      /* ── Metric items with dot ── */
+      .metric-item {
+        display: flex; flex-direction: column;
+        padding: 5px 0; border-bottom: 1px solid #ecf0f1; font-size: 13px;
+      }
+      .metric-label { font-weight: bold; color: #34495e; margin-bottom: 2px; }
+      .metric-val   { display: flex; align-items: center; gap: 5px; }
+      .dot {
+        width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+      }
+      .dot.pos  { background: #27ae60; }
+      .dot.neg  { background: #e74c3c; }
+      .dot.warn { background: #e67e22; }
+      .dot.neu  { background: #bdc3c7; }
+      .val-text.pos  { color: #1e8449; }
+      .val-text.neg  { color: #c0392b; }
+      .val-text.warn { color: #d35400; }
+      .val-text      { color: #2980b9; }
+
+      @media (max-width: 900px) {
+        .results-section { width: 48%; }
+        .criteria-grid   { grid-template-columns: repeat(2,1fr); }
+      }
+      @media (max-width: 600px) {
+        .results-section { width: 100%; }
+        .criteria-grid   { grid-template-columns: 1fr; }
+        #tickerInput { width: 100%; margin-bottom: 8px; }
+        button { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="main-nav">
+      <ul>
+        <li><a href="{{ url_for('index') }}">Home</a></li>
+        <li><a href="{{ url_for('portfolio') }}">Portfolio</a></li>
+        <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
+        <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
+      </ul>
+    </nav>
+
+    <div class="container">
+      <div id="content">
+        <input type="text" id="tickerInput" placeholder="Ticker (ex: AAPL)" />
+        <button onclick="fetchStockAnalysis()">Analisar</button>
+
+        <!-- Scoring -->
+        <div id="scoring" style="display:none" class="scoring-panel"></div>
+
+        <!-- Info -->
+        <div id="result" class="results-container_title">
+          <div id="title" class="results-section" style="width:100%">
+            <h2>Informações</h2>
+          </div>
+        </div>
+
+        <!-- Data -->
+        <div id="results" class="results-container">
+          <div id="values"       class="results-section"><h2>Valores</h2></div>
+          <div id="ratios"       class="results-section"><h2>Rácios</h2></div>
+          <div id="margins"      class="results-section"><h2>Margens</h2></div>
+          <div id="saude"        class="results-section"><h2>Saúde</h2></div>
+          <div id="tecnico"      class="results-section"><h2>Técnico</h2></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* ──────────────────────────────────────────
+         Helpers
+      ────────────────────────────────────────── */
+      function safeFixed(v, d = 2) {
+        if (v === null || v === undefined || v === 'N/A') return 'N/A';
+        const n = parseFloat(v);
+        return isNaN(n) ? (v ?? 'N/A') : n.toFixed(d);
+      }
+
+      function parsePct(str) {
+        // "15.23%" → 15.23
+        if (!str || str === 'N/A') return null;
+        return parseFloat(str.replace('%', ''));
+      }
+
+      /* signal: 'pos' | 'neg' | 'warn' | 'neu' */
+      function metricHtml(label, value, signal) {
+        const sig = signal || 'neu';
+        const valClass = sig === 'pos' ? 'pos' : sig === 'neg' ? 'neg' : sig === 'warn' ? 'warn' : '';
+        return `
+          <div class="metric-item">
+            <div class="metric-label">${label}</div>
+            <div class="metric-val">
+              <span class="dot ${sig}"></span>
+              <span class="val-text ${valClass}">${value ?? 'N/A'}</span>
+            </div>
+          </div>`;
+      }
+
+      function section(title, items) {
+        return '<h2>' + title + '</h2>' + items.map(i => metricHtml(i.l, i.v, i.s)).join('');
+      }
+
+      /* ──────────────────────────────────────────
+         Scoring Model (12 critérios)
+      ────────────────────────────────────────── */
+      function computeScore(d) {
+        const criteria = [];
+        let score = 0;
+
+        function add(label, pass, value, hint) {
+          if (pass !== null) { score += pass ? 1 : 0; }
+          criteria.push({ label, pass, value, hint });
+        }
+
+        // — Saúde Financeira —
+        const sp = parseFloat(d.springate);
+        if (!isNaN(sp))
+          add('Springate > 0.862', sp > 0.862, sp.toFixed(2),
+              sp > 0.862 ? 'Empresa saudável' : 'Risco de insolvência');
+
+        const zm = parseFloat(d.zmij);
+        if (!isNaN(zm))
+          add('Zmijewski < 0', zm < 0, zm.toFixed(2),
+              zm < 0 ? 'Sem risco financeiro' : 'Risco de dificuldade financeira');
+
+        const ms = parseFloat(d.mscore);
+        if (!isNaN(ms))
+          add('M-Score < −1.78', ms < -1.78, ms.toFixed(2),
+              ms < -1.78 ? 'Sem indícios de manipulação' : 'Possível manipulação contabilística');
+
+        const sl = parseFloat(d.sloan);
+        if (!isNaN(sl))
+          add('|Sloan| < 0.05', Math.abs(sl) < 0.05, sl.toFixed(3),
+              Math.abs(sl) < 0.05 ? 'Boa qualidade de resultados' : 'Resultados baseados em accruals');
+
+        const cr = parseFloat(d.currentRatio);
+        if (!isNaN(cr))
+          add('Current Ratio > 1.5', cr > 1.5, cr.toFixed(2),
+              cr > 1.5 ? 'Boa liquidez' : cr > 1 ? 'Liquidez aceitável' : 'Liquidez fraca');
+
+        // — Valorização —
+        const pe = parseFloat(d.trailingPE);
+        if (!isNaN(pe) && pe > 0)
+          add('P/E < 25', pe < 25, pe.toFixed(2),
+              pe < 15 ? 'Barato' : pe < 25 ? 'Valorização razoável' : 'Possivelmente sobrevalorizado');
+
+        const peg = parseFloat(d.pegRatio);
+        if (!isNaN(peg) && peg > 0)
+          add('PEG < 1', peg < 1, peg.toFixed(2),
+              peg < 1 ? 'Crescimento a bom preço' : 'Crescimento caro');
+
+        const tq = parseFloat(d.tobinQ);
+        if (!isNaN(tq))
+          add('Tobin Q < 1', tq < 1, tq.toFixed(2),
+              tq < 1 ? 'Ativos subavaliados pelo mercado' : 'Mercado valoriza acima dos ativos');
+
+        // — Técnico —
+        const rsi = parseFloat(d.rsi);
+        if (!isNaN(rsi))
+          add('RSI 30–70', rsi >= 30 && rsi <= 70, rsi.toFixed(1),
+              rsi < 30 ? 'Sobrevenda — potencial compra' : rsi > 70 ? 'Sobrecompra — potencial venda' : 'Zona neutra');
+
+        const macd = parseFloat(d.macd), sig = parseFloat(d.signal);
+        if (!isNaN(macd) && !isNaN(sig))
+          add('MACD > Signal', macd > sig,
+              `${macd.toFixed(2)} / ${sig.toFixed(2)}`,
+              macd > sig ? 'Momentum de alta' : 'Momentum de baixa');
+
+        const s50 = parseFloat(d.sma50), s200 = parseFloat(d.sma200);
+        if (!isNaN(s50) && !isNaN(s200))
+          add('SMA50 > SMA200', s50 > s200,
+              `${s50.toFixed(2)} / ${s200.toFixed(2)}`,
+              s50 > s200 ? 'Golden Cross — tendência de alta' : 'Death Cross — tendência de baixa');
+
+        const kai = parseFloat(d.kairi);
+        if (!isNaN(kai))
+          add('Kairi < 0', kai < 0, kai.toFixed(2) + '%',
+              kai < 0 ? 'Preço abaixo da média — potencial recuperação' : 'Preço acima da média');
+
+        return { score, total: criteria.length, criteria };
+      }
+
+      function getRating(score, total) {
+        const p = score / total;
+        if (p >= 0.83) return { label: 'Muito Positivo', color: '#0e6b0e', bg: '#d5f5e3' };
+        if (p >= 0.58) return { label: 'Positivo',       color: '#27ae60', bg: '#eafaf1' };
+        if (p >= 0.42) return { label: 'Neutro',          color: '#e67e22', bg: '#fef9e7' };
+        if (p >= 0.25) return { label: 'Negativo',        color: '#e74c3c', bg: '#fadbd8' };
+        return             { label: 'Muito Negativo',  color: '#922b21', bg: '#f9ebea' };
+      }
+
+      function renderScoring(d) {
+        const { score, total, criteria } = computeScore(d);
+        const rating = getRating(score, total);
+
+        const criteriaHtml = criteria.map(c => `
+          <div class="criterion ${c.pass ? 'pass' : 'fail'}">
+            <span class="crit-icon">${c.pass ? '✅' : '❌'}</span>
+            <div class="crit-body">
+              <span class="crit-label">${c.label}</span>
+              <span class="crit-val">${c.value}</span>
+              <span class="crit-hint">${c.hint}</span>
+            </div>
+          </div>`).join('');
+
+        document.getElementById('scoring').style.display = 'block';
+        document.getElementById('scoring').innerHTML = `
+          <div class="scoring-header">
+            <div class="score-circle" style="background:${rating.color}">
+              <span class="score-num">${score}</span>
+              <span class="score-denom">/ ${total}</span>
+            </div>
+            <div class="score-meta">
+              <h3 style="color:${rating.color}">${rating.label}</h3>
+              <p>${score} de ${total} critérios positivos</p>
+            </div>
+          </div>
+          <div class="criteria-grid">${criteriaHtml}</div>`;
+      }
+
+      /* ──────────────────────────────────────────
+         Signal helpers para métricas individuais
+      ────────────────────────────────────────── */
+      function peSignal(v)   { const n=parseFloat(v); if(isNaN(n)||n<=0) return 'neu'; return n<15?'pos':n<25?'warn':'neg'; }
+      function pegSignal(v)  { const n=parseFloat(v); if(isNaN(n)||n<=0) return 'neu'; return n<1?'pos':n<2?'warn':'neg'; }
+      function crSignal(v)   { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return n>2?'pos':n>1?'warn':'neg'; }
+      function qrSignal(v)   { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return n>1?'pos':n>0.5?'warn':'neg'; }
+      function deSignal(v)   { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return n<50?'pos':n<100?'warn':'neg'; }
+      function pctSignal(s)  { const n=parsePct(s);   if(n===null)       return 'neu'; return n>0?'pos':'neg'; }
+      function zmijSignal(v) { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return n<0?'pos':'neg'; }
+      function spSignal(v)   { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return n>0.862?'pos':'neg'; }
+      function msSignal(v)   { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return n<-1.78?'pos':n<-1?'warn':'neg'; }
+      function slSignal(v)   { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return Math.abs(n)<0.05?'pos':Math.abs(n)<0.1?'warn':'neg'; }
+      function tqSignal(v)   { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return n<1?'pos':n<2?'warn':'neg'; }
+      function rsiSignal(v)  { const n=parseFloat(v); if(isNaN(n))       return 'neu'; return n>=30&&n<=70?'pos':n>70?'neg':'warn'; }
+      function macdSignal(macd,sig){ const m=parseFloat(macd),s=parseFloat(sig); if(isNaN(m)||isNaN(s)) return 'neu'; return m>s?'pos':'neg'; }
+      function smaSignal(s50,s200) { const a=parseFloat(s50),b=parseFloat(s200); if(isNaN(a)||isNaN(b)) return 'neu'; return a>b?'pos':'neg'; }
+      function kairiSignal(v){ const n=parseFloat(v); if(isNaN(n)) return 'neu'; return n<0?'pos':n>5?'neg':'warn'; }
+      function recSignal(v)  { const n=parseFloat(v); if(isNaN(n)) return 'neu'; return n<=2?'pos':n<=3?'warn':'neg'; }
+
+      /* ──────────────────────────────────────────
+         Fetch & display
+      ────────────────────────────────────────── */
+      function fetchStockAnalysis() {
+        const symbol = document.getElementById('tickerInput').value.trim().toUpperCase();
+        if (!symbol) { alert('Insere um símbolo válido.'); return; }
+
+        // Loading state
+        ['title','values','ratios','margins','saude','tecnico'].forEach(id => {
+          document.getElementById(id).innerHTML = `<h2>A carregar...</h2>`;
+        });
+        document.getElementById('scoring').style.display = 'none';
+
+        fetch('/stock_analysis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol })
+        })
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(data => {
+          if (data.error) { alert(data.error); return; }
+          displayResults(data, symbol);
+        })
+        .catch(() => alert('Erro ao obter dados da ação.'));
+      }
+
+      function displayResults(d, symbol) {
+        // Scoring
+        renderScoring(d);
+
+        // Título / info
+        document.getElementById('title').innerHTML = section(`Análise: ${symbol}`, [
+          { l: 'Empresa',   v: d.shortName },
+          { l: 'Setor',     v: d.sector },
+          { l: 'Indústria', v: d.industry },
+          { l: 'País',      v: d.country },
+          { l: 'Preço',     v: d.price },
+        ]);
+
+        // Valores
+        document.getElementById('values').innerHTML = section('Valores', [
+          { l: 'Market Cap',          v: d.marketCap },
+          { l: 'Enterprise Value',    v: d.enterpriseValue },
+          { l: 'Preço Atual',         v: d.currentPrice },
+          { l: 'Preço Alvo',          v: d.targetMedianPrice },
+          { l: 'Receita',             v: d.totalRevenue },
+          { l: 'Lucro Líquido',       v: d.netIncomeToCommon },
+          { l: 'Caixa',               v: d.totalCash },
+          { l: 'Dívida Total',        v: d.totalDebt },
+          { l: 'Free Cash Flow',      v: d.freeCashflow },
+          { l: 'Shares Outstanding',  v: d.sharesOutstanding },
+          { l: 'Book Value / Share',  v: safeFixed(d.bookValue) },
+        ]);
+
+        // Rácios
+        document.getElementById('ratios').innerHTML = section('Rácios', [
+          { l: 'P/E',             v: safeFixed(d.trailingPE),   s: peSignal(d.trailingPE) },
+          { l: 'P/E Fwd',        v: safeFixed(d.forwardPE),    s: peSignal(d.forwardPE) },
+          { l: 'EPS',             v: safeFixed(d.trailingEps),  s: parseFloat(d.trailingEps)>0?'pos':'neg' },
+          { l: 'EPS Fwd',        v: safeFixed(d.forwardEps),   s: parseFloat(d.forwardEps)>0?'pos':'neg' },
+          { l: 'PEG',             v: safeFixed(d.pegRatio),     s: pegSignal(d.pegRatio) },
+          { l: 'Dividendo',       v: d.dividendRate },
+          { l: 'Beta',            v: safeFixed(d.beta) },
+          { l: 'Current Ratio',   v: safeFixed(d.currentRatio), s: crSignal(d.currentRatio) },
+          { l: 'Quick Ratio',     v: safeFixed(d.quickRatio),   s: qrSignal(d.quickRatio) },
+          { l: 'EV/EBITDA',       v: safeFixed(d.enterpriseToEbitda) },
+          { l: 'Debt/Equity',     v: safeFixed(d.debtToEquity), s: deSignal(d.debtToEquity) },
+          { l: 'ROE',             v: d.roe,                     s: pctSignal(d.roe) },
+          { l: 'ROA',             v: d.roa,                     s: pctSignal(d.roa) },
+          { l: 'ROCE',            v: d.roce,                    s: pctSignal(d.roce) },
+          { l: 'ROIC',            v: d.roic,                    s: pctSignal(d.roic) },
+        ]);
+
+        // Margens
+        document.getElementById('margins').innerHTML = section('Margens', [
+          { l: 'Margem Bruta',       v: d.grossMargin,       s: pctSignal(d.grossMargin) },
+          { l: 'Margem Operacional', v: d.operatingMargins,  s: pctSignal(d.operatingMargins) },
+          { l: 'Margem Líquida',     v: d.profitMargins,     s: pctSignal(d.profitMargins) },
+          { l: 'Margem EBITDA',      v: d.ebitdaMargins,     s: pctSignal(d.ebitdaMargins) },
+          { l: 'Cresc. Receita',     v: d.revenueGrowth,     s: pctSignal(d.revenueGrowth) },
+          { l: 'Cresc. Lucro',       v: d.earningsGrowth,    s: pctSignal(d.earningsGrowth) },
+        ]);
+
+        // Saúde Financeira
+        document.getElementById('saude').innerHTML = section('Saúde', [
+          { l: 'Recomendação',  v: d.recommendationKey },
+          { l: 'Média Rec.',    v: safeFixed(d.recommendationMean), s: recSignal(d.recommendationMean) },
+          { l: 'Springate',     v: safeFixed(d.springate),  s: spSignal(d.springate) },
+          { l: 'Zmijewski',     v: safeFixed(d.zmij),       s: zmijSignal(d.zmij) },
+          { l: 'M-Score',       v: safeFixed(d.mscore),     s: msSignal(d.mscore) },
+          { l: 'Sloan',         v: safeFixed(d.sloan, 3),   s: slSignal(d.sloan) },
+          { l: 'Tobin Q',       v: safeFixed(d.tobinQ),     s: tqSignal(d.tobinQ) },
+        ]);
+
+        // Técnico
+        document.getElementById('tecnico').innerHTML = section('Técnico', [
+          { l: 'RSI',          v: safeFixed(d.rsi, 1),    s: rsiSignal(d.rsi) },
+          { l: 'MACD',         v: safeFixed(d.macd),      s: macdSignal(d.macd, d.signal) },
+          { l: 'Signal Line',  v: safeFixed(d.signal) },
+          { l: 'SMA 50',       v: safeFixed(d.sma50),     s: smaSignal(d.sma50, d.sma200) },
+          { l: 'SMA 200',      v: safeFixed(d.sma200) },
+          { l: 'Kairi',        v: safeFixed(d.kairi) + '%', s: kairiSignal(d.kairi) },
+        ]);
+      }
+
+      // Enter key support
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('tickerInput').addEventListener('keydown', e => {
+          if (e.key === 'Enter') fetchStockAnalysis();
+        });
+      });
+    </script>
+  </body>
+</html>

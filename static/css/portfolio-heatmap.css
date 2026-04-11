@@ -1,0 +1,75 @@
+.visualizations-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.chart-container {
+    flex: 1;
+    min-width: 300px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.heatmap-container {
+    flex: 1;
+    min-width: 300px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    justify-content: center;
+    align-items: center;
+}
+
+.stock-box {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.stock-box:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.stock-symbol {
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.stock-percentage {
+    font-size: 14px;
+    margin-bottom: 2px;
+}
+
+.stock-performance {
+    font-size: 12px;
+    opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+    .visualizations-container {
+        flex-direction: column;
+    }
+    
+    .chart-container,
+    .heatmap-container {
+        width: 100%;
+    }
+}
