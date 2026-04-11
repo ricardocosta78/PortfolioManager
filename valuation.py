@@ -1,6 +1,5 @@
 import yfinance as yf
 import numpy as np
-from scipy.stats import linregress
 from datetime import datetime, timedelta
 import pandas as pd
 from contextlib import contextmanager
