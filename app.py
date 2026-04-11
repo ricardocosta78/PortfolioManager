@@ -4,10 +4,14 @@ from flask_sqlalchemy import SQLAlchemy
 from valuation import calculate_stock_valuation
 from calculos import calculate_stock_metrics
 from collections import defaultdict
+import os
+
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 
 # Configuração da base de dados
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///portfolio.db'
+DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///portfolio.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 db = SQLAlchemy(app)
 
 # Modelo da tabela de portfólio
