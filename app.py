@@ -262,6 +262,68 @@ def delete_transaction(tx_id):
         return jsonify({'message': 'Transação removida.'}), 200
     return jsonify({'error': 'Transação não encontrada.'}), 404
 
+# ── Comparador de Ações ──────────────────────────────────────────────────────
+
+@app.route('/comparator')
+def comparator():
+    return render_template('comparator.html')
+
+@app.route('/api/compare', methods=['POST'])
+def compare_stocks():
+    symbols = request.json.get('symbols', [])
+    symbols = [s.upper().strip() for s in symbols if s.strip()][:4]
+    if not symbols:
+        return jsonify({'error': 'Sem símbolos.'}), 400
+
+    results = []
+    for sym in symbols:
+        try:
+            tk = yf.Ticker(sym)
+            info = tk.info
+            hist = tk.history(period='1y')
+
+            def g(key, default=None):
+                v = info.get(key)
+                return v if v is not None else default
+
+            # Variação 1 ano
+            chg_1y = None
+            if len(hist) >= 2:
+                start = float(hist['Close'].iloc[0])
+                end   = float(hist['Close'].iloc[-1])
+                chg_1y = round((end - start) / start * 100, 2) if start else None
+
+            results.append({
+                'symbol':          sym,
+                'name':            g('longName', sym),
+                'price':           g('currentPrice') or g('regularMarketPrice'),
+                'market_cap':      g('marketCap'),
+                'pe':              g('trailingPE'),
+                'forward_pe':      g('forwardPE'),
+                'pb':              g('priceToBook'),
+                'ps':              g('priceToSalesTrailing12Months'),
+                'peg':             g('trailingPegRatio') or g('pegRatio'),
+                'eps':             g('trailingEps'),
+                'roe':             g('returnOnEquity'),
+                'roa':             g('returnOnAssets'),
+                'profit_margin':   g('profitMargins'),
+                'gross_margin':    g('grossMargins'),
+                'op_margin':       g('operatingMargins'),
+                'revenue_growth':  g('revenueGrowth'),
+                'earnings_growth': g('earningsGrowth'),
+                'dividend_yield':  g('dividendYield'),
+                'beta':            g('beta'),
+                'week52_high':     g('fiftyTwoWeekHigh'),
+                'week52_low':      g('fiftyTwoWeekLow'),
+                'debt_to_equity':  g('debtToEquity'),
+                'current_ratio':   g('currentRatio'),
+                'chg_1y':          chg_1y,
+            })
+        except Exception as e:
+            results.append({'symbol': sym, 'error': str(e)})
+
+    return jsonify(results)
+
 # ── Alertas de Preço ──────────────────────────────────────────────────────────
 
 @app.route('/alerts')

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Comparador de Ações</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      .container { width: 92%; max-width: 1200px; margin: 30px auto; }
+      h1 { text-align: center; color: #2c3e50; margin-bottom: 28px; }
+
+      /* Barra de pesquisa */
+      .search-card {
+        background: #fff; border-radius: 12px;
+        padding: 24px 28px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 28px;
+      }
+      .search-card h2 {
+        margin: 0 0 16px; font-size: 14px; color: #2c3e50;
+        text-transform: uppercase; letter-spacing: .5px;
+        border-bottom: 2px solid #3498db; padding-bottom: 8px;
+      }
+      .ticker-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      .ticker-chips { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; align-items: center; }
+      .chip {
+        display: flex; align-items: center; gap: 6px;
+        background: #eaf4fb; border: 1.5px solid #3498db;
+        color: #1a5276; border-radius: 20px;
+        padding: 5px 14px; font-size: 14px; font-weight: 700;
+      }
+      .chip .remove {
+        cursor: pointer; color: #3498db; font-size: 16px;
+        line-height: 1; background: none; border: none; padding: 0;
+      }
+      .chip .remove:hover { color: #e74c3c; background: none; }
+      .add-input {
+        padding: 9px 14px; border: 1.5px solid #ddd; border-radius: 8px;
+        font-size: 14px; width: 130px; background: #fafafa;
+        text-transform: uppercase;
+      }
+      .add-input:focus { outline: none; border-color: #3498db; background: #fff; }
+      .btn-compare {
+        padding: 10px 28px; background: #3498db; color: #fff;
+        border: none; border-radius: 8px; font-size: 14px;
+        font-weight: 600; cursor: pointer; width: auto;
+        transition: background .2s;
+      }
+      .btn-compare:hover { background: #2980b9; }
+      .btn-clear-all {
+        padding: 10px 18px; background: #e74c3c; color: #fff;
+        border: none; border-radius: 8px; font-size: 14px;
+        font-weight: 600; cursor: pointer; width: auto;
+      }
+      .btn-clear-all:hover { background: #c0392b; }
+
+      /* Loading */
+      #loading { display: none; text-align: center; padding: 40px; color: #7f8c8d; font-size: 15px; }
+      .spinner {
+        display: inline-block; width: 28px; height: 28px;
+        border: 3px solid #ddd; border-top-color: #3498db;
+        border-radius: 50%; animation: spin .7s linear infinite;
+        vertical-align: middle; margin-right: 10px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Tabela de comparação */
+      #compareResult { display: none; }
+
+      .compare-table-wrap { overflow-x: auto; margin-bottom: 28px; }
+      .compare-table {
+        width: 100%; border-collapse: collapse;
+        font-size: 14px; min-width: 520px;
+      }
+      .compare-table th {
+        padding: 12px 16px; background: #2c3e50; color: #fff;
+        font-size: 12px; text-transform: uppercase; letter-spacing: .4px;
+        text-align: center; min-width: 130px;
+      }
+      .compare-table th.row-label {
+        text-align: left; background: #34495e; min-width: 190px;
+      }
+      .compare-table td {
+        padding: 10px 16px; border-bottom: 1px solid #f0f0f0;
+        text-align: center; color: #2c3e50;
+      }
+      .compare-table td.row-label {
+        text-align: left; font-weight: 600; color: #5d6d7e;
+        background: #f8fafc; font-size: 13px;
+      }
+      .compare-table tr:last-child td { border-bottom: none; }
+      .compare-table tr:hover td { background: #f0f7ff; }
+      .compare-table tr:hover td.row-label { background: #e8f4fd; }
+
+      /* Secções */
+      .section-row td {
+        background: #ecf0f1 !important; font-weight: 700 !important;
+        color: #2c3e50 !important; font-size: 12px !important;
+        text-transform: uppercase; letter-spacing: .4px;
+        padding: 8px 16px !important;
+      }
+
+      /* Cores de valor */
+      .pos { color: #27ae60 !important; font-weight: 700; }
+      .neg { color: #e74c3c !important; font-weight: 700; }
+      .best { background: #eafaf1 !important; font-weight: 700; color: #1e8449 !important; }
+
+      /* Gráfico */
+      .chart-card {
+        background: #fff; border-radius: 12px;
+        padding: 22px 24px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 24px;
+      }
+      .chart-card h2 {
+        margin: 0 0 16px; font-size: 14px; color: #2c3e50;
+        text-transform: uppercase; letter-spacing: .5px;
+        border-bottom: 2px solid #3498db; padding-bottom: 8px;
+      }
+      .chart-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+      }
+      canvas { max-height: 260px; }
+
+      @media (max-width: 700px) {
+        .chart-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="main-nav">
+      <ul>
+        <li><a href="{{ url_for('index') }}">Home</a></li>
+        <li><a href="{{ url_for('portfolio') }}">Portfolio</a></li>
+        <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
+        <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
+        <li><a href="{{ url_for('transactions') }}">Histórico</a></li>
+        <li><a href="{{ url_for('alerts') }}">Alertas</a></li>
+        <li><a href="{{ url_for('comparator') }}">Comparador</a></li>
+      </ul>
+    </nav>
+
+    <div class="container">
+      <h1>Comparador de Ações</h1>
+
+      <!-- Barra de pesquisa -->
+      <div class="search-card">
+        <h2>Adicionar Tickers (máx. 4)</h2>
+        <div class="ticker-row">
+          <div class="ticker-chips" id="chipContainer"></div>
+          <input class="add-input" id="tickerInput" placeholder="ex: AAPL" maxlength="10" />
+          <button class="btn-compare" onclick="addTicker()">+ Adicionar</button>
+          <button class="btn-compare" style="background:#27ae60" onclick="compare()">Comparar</button>
+          <button class="btn-clear-all" onclick="clearAll()">Limpar</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="loading"><span class="spinner"></span>A obter dados...</div>
+
+      <!-- Resultado -->
+      <div id="compareResult">
+        <!-- Tabela -->
+        <div class="compare-table-wrap">
+          <table class="compare-table" id="compareTable"></table>
+        </div>
+
+        <!-- Gráficos -->
+        <div class="chart-card">
+          <h2>Comparação Visual</h2>
+          <div class="chart-grid">
+            <canvas id="chartPE"></canvas>
+            <canvas id="chartMargins"></canvas>
+            <canvas id="chartGrowth"></canvas>
+            <canvas id="chartReturns"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let tickers = [];
+      let charts = {};
+
+      const COLORS = ['#3498db','#e74c3c','#27ae60','#f39c12'];
+
+      function addTicker() {
+        const input = document.getElementById('tickerInput');
+        const sym = input.value.trim().toUpperCase();
+        if (!sym) return;
+        if (tickers.includes(sym)) { input.value = ''; return; }
+        if (tickers.length >= 4) { alert('Máximo de 4 tickers.'); return; }
+        tickers.push(sym);
+        input.value = '';
+        renderChips();
+      }
+
+      function removeTicker(sym) {
+        tickers = tickers.filter(t => t !== sym);
+        renderChips();
+      }
+
+      function clearAll() {
+        tickers = [];
+        renderChips();
+        document.getElementById('compareResult').style.display = 'none';
+      }
+
+      function renderChips() {
+        const c = document.getElementById('chipContainer');
+        c.innerHTML = tickers.map(t => `
+          <div class="chip">${t}
+            <button class="remove" onclick="removeTicker('${t}')">×</button>
+          </div>`).join('');
+      }
+
+      function fmt(v, type) {
+        if (v === null || v === undefined) return '<span style="color:#bbb">—</span>';
+        switch(type) {
+          case 'price': return '$' + parseFloat(v).toLocaleString('pt-PT', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+          case 'pct':   return (parseFloat(v)*100).toFixed(2) + '%';
+          case 'chg':   return (parseFloat(v) >= 0 ? '+' : '') + parseFloat(v).toFixed(2) + '%';
+          case 'mcap': {
+            const n = parseFloat(v);
+            if (n >= 1e12) return (n/1e12).toFixed(2) + 'T';
+            if (n >= 1e9)  return (n/1e9).toFixed(2) + 'B';
+            if (n >= 1e6)  return (n/1e6).toFixed(2) + 'M';
+            return n.toFixed(0);
+          }
+          case 'x': return parseFloat(v).toFixed(2) + 'x';
+          default:  return parseFloat(v).toFixed(2);
+        }
+      }
+
+      function colorPct(v) {
+        if (v === null || v === undefined) return '';
+        return parseFloat(v) >= 0 ? 'pos' : 'neg';
+      }
+
+      function compare() {
+        if (tickers.length < 2) { alert('Adiciona pelo menos 2 tickers.'); return; }
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('compareResult').style.display = 'none';
+
+        fetch('/api/compare', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({symbols: tickers})
+        })
+        .then(r => r.json())
+        .then(data => {
+          document.getElementById('loading').style.display = 'none';
+          renderTable(data);
+          renderCharts(data);
+          document.getElementById('compareResult').style.display = 'block';
+        })
+        .catch(() => {
+          document.getElementById('loading').style.display = 'none';
+          alert('Erro ao obter dados.');
+        });
+      }
+
+      function renderTable(data) {
+        const ok = data.filter(d => !d.error);
+        if (!ok.length) return;
+
+        // Cabeçalho
+        let head = '<thead><tr><th class="row-label">Métrica</th>';
+        ok.forEach((d,i) => {
+          head += `<th style="border-top:4px solid ${COLORS[i]}">${d.symbol}<br><small style="font-weight:400;font-size:11px">${(d.name||'').substring(0,22)}</small></th>`;
+        });
+        head += '</tr></thead>';
+
+        // Linhas helper
+        function row(label, key, type, higherBetter = true) {
+          let vals = ok.map(d => d[key]);
+          let numVals = vals.map(v => v !== null && v !== undefined ? parseFloat(v) : null);
+          let bestIdx = -1;
+          if (ok.length > 1) {
+            let validNums = numVals.filter(v => v !== null);
+            if (validNums.length > 1) {
+              let bestVal = higherBetter ? Math.max(...validNums) : Math.min(...validNums);
+              bestIdx = numVals.indexOf(bestVal);
+            }
+          }
+          let cells = ok.map((d, i) => {
+            let v = d[key];
+            let cls = '';
+            if (i === bestIdx) cls = 'best';
+            else if (type === 'pct' || type === 'chg') cls = colorPct(v);
+            return `<td class="${cls}">${fmt(v, type)}</td>`;
+          }).join('');
+          return `<tr><td class="row-label">${label}</td>${cells}</tr>`;
+        }
+
+        function section(label) {
+          let cols = ok.map(() => '<td></td>').join('');
+          return `<tr class="section-row"><td class="row-label">${label}</td>${cols}</tr>`;
+        }
+
+        let body = '<tbody>';
+        body += section('Preço & Mercado');
+        body += row('Preço Atual',        'price',          'price', false);
+        body += row('Market Cap',         'market_cap',     'mcap');
+        body += row('Variação 1 Ano',     'chg_1y',         'chg');
+        body += row('Máx. 52 Semanas',    'week52_high',    'price', false);
+        body += row('Mín. 52 Semanas',    'week52_low',     'price', false);
+
+        body += section('Rácios de Avaliação');
+        body += row('P/E (TTM)',           'pe',             'x',    false);
+        body += row('P/E Forward',         'forward_pe',     'x',    false);
+        body += row('P/B',                 'pb',             'x',    false);
+        body += row('P/S',                 'ps',             'x',    false);
+        body += row('PEG',                 'peg',            'x',    false);
+        body += row('EPS (TTM)',           'eps',            'price');
+
+        body += section('Crescimento');
+        body += row('Crescimento Receita', 'revenue_growth',  'pct');
+        body += row('Crescimento Lucros',  'earnings_growth', 'pct');
+        body += row('Dividend Yield',      'dividend_yield',  'pct');
+
+        body += section('Rentabilidade');
+        body += row('Margem Bruta',        'gross_margin',    'pct');
+        body += row('Margem Operacional',  'op_margin',       'pct');
+        body += row('Margem Líquida',      'profit_margin',   'pct');
+        body += row('ROE',                 'roe',             'pct');
+        body += row('ROA',                 'roa',             'pct');
+
+        body += section('Saúde Financeira');
+        body += row('Dívida/Capital',      'debt_to_equity',  'x',   false);
+        body += row('Rácio Corrente',      'current_ratio',   'x');
+        body += row('Beta',                'beta',            'x',   false);
+        body += '</tbody>';
+
+        document.getElementById('compareTable').innerHTML = head + body;
+      }
+
+      function makeBarChart(canvasId, label, data, labels, colors, fmt) {
+        if (charts[canvasId]) charts[canvasId].destroy();
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        charts[canvasId] = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label,
+              data,
+              backgroundColor: colors.map(c => c + 'cc'),
+              borderColor: colors,
+              borderWidth: 2,
+              borderRadius: 6,
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              title: { display: true, text: label, font: {size: 13}, color: '#2c3e50' }
+            },
+            scales: {
+              y: { ticks: { callback: v => fmt(v) }, grid: { color: '#f0f0f0' } },
+              x: { grid: { display: false } }
+            }
+          }
+        });
+      }
+
+      function renderCharts(data) {
+        const ok = data.filter(d => !d.error);
+        const labels = ok.map(d => d.symbol);
+        const colors = ok.map((_, i) => COLORS[i]);
+
+        makeBarChart('chartPE',      'P/E Ratio',           ok.map(d => d.pe),             labels, colors, v => v?.toFixed(1) + 'x');
+        makeBarChart('chartMargins', 'Margens (%)',          ok.map(d => d.profit_margin ? d.profit_margin*100 : null), labels, colors, v => v?.toFixed(1) + '%');
+        makeBarChart('chartGrowth',  'Crescimento Receita (%)', ok.map(d => d.revenue_growth ? d.revenue_growth*100 : null), labels, colors, v => v?.toFixed(1) + '%');
+        makeBarChart('chartReturns', 'ROE (%)',              ok.map(d => d.roe ? d.roe*100 : null), labels, colors, v => v?.toFixed(1) + '%');
+      }
+
+      // Enter no input
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('tickerInput').addEventListener('keydown', e => {
+          if (e.key === 'Enter') addTicker();
+        });
+      });
+    </script>
+  </body>
+</html>
