@@ -25,6 +25,16 @@ class Stock(db.Model):
     quantity = db.Column(db.Float, nullable=False)
     purchase_price = db.Column(db.Float, nullable=False)
 
+# Modelo de alertas de preço
+class PriceAlert(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    symbol = db.Column(db.String(10), nullable=False)
+    target_price = db.Column(db.Float, nullable=False)
+    direction = db.Column(db.String(5), nullable=False)  # 'above' or 'below'
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    triggered_at = db.Column(db.DateTime, nullable=True)
+
 # Modelo do histórico de transações
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -251,6 +261,89 @@ def delete_transaction(tx_id):
         db.session.commit()
         return jsonify({'message': 'Transação removida.'}), 200
     return jsonify({'error': 'Transação não encontrada.'}), 404
+
+# ── Alertas de Preço ──────────────────────────────────────────────────────────
+
+@app.route('/alerts')
+def alerts():
+    return render_template('alerts.html')
+
+@app.route('/api/alerts', methods=['GET'])
+def get_alerts():
+    alerts_list = PriceAlert.query.order_by(PriceAlert.active.desc(), PriceAlert.created_at.desc()).all()
+    return jsonify([{
+        'id': a.id,
+        'symbol': a.symbol,
+        'target_price': a.target_price,
+        'direction': a.direction,
+        'active': a.active,
+        'created_at': a.created_at.strftime('%d/%m/%Y %H:%M'),
+        'triggered_at': a.triggered_at.strftime('%d/%m/%Y %H:%M') if a.triggered_at else None
+    } for a in alerts_list])
+
+@app.route('/api/alerts', methods=['POST'])
+def add_alert():
+    data = request.json
+    symbol = data.get('symbol', '').upper().strip()
+    target_price = data.get('target_price')
+    direction = data.get('direction')  # 'above' or 'below'
+
+    if not symbol or target_price is None or direction not in ('above', 'below'):
+        return jsonify({'error': 'Dados inválidos.'}), 400
+
+    alert = PriceAlert(symbol=symbol, target_price=float(target_price), direction=direction)
+    db.session.add(alert)
+    db.session.commit()
+    return jsonify({'message': 'Alerta criado.', 'id': alert.id}), 201
+
+@app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
+def delete_alert(alert_id):
+    alert = db.session.get(PriceAlert, alert_id)
+    if alert:
+        db.session.delete(alert)
+        db.session.commit()
+        return jsonify({'message': 'Alerta removido.'}), 200
+    return jsonify({'error': 'Alerta não encontrado.'}), 404
+
+@app.route('/api/alerts/check', methods=['GET'])
+def check_alerts():
+    """Verifica alertas activos contra preços actuais. Marca os disparados."""
+    active_alerts = PriceAlert.query.filter_by(active=True).all()
+    if not active_alerts:
+        return jsonify([])
+
+    # Buscar preços únicos
+    symbols = list({a.symbol for a in active_alerts})
+    prices = {}
+    for sym in symbols:
+        try:
+            hist = yf.Ticker(sym).history(period='1d')
+            prices[sym] = float(hist['Close'].iloc[-1]) if not hist.empty else None
+        except Exception:
+            prices[sym] = None
+
+    triggered = []
+    for a in active_alerts:
+        price = prices.get(a.symbol)
+        if price is None:
+            continue
+        hit = (a.direction == 'above' and price >= a.target_price) or \
+              (a.direction == 'below' and price <= a.target_price)
+        if hit:
+            a.active = False
+            a.triggered_at = datetime.utcnow()
+            triggered.append({
+                'id': a.id,
+                'symbol': a.symbol,
+                'target_price': a.target_price,
+                'direction': a.direction,
+                'current_price': round(price, 2)
+            })
+
+    if triggered:
+        db.session.commit()
+
+    return jsonify(triggered)
 
 # Executa o servidor
 if __name__ == '__main__':

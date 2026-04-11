@@ -228,8 +228,27 @@ async function loadPortfolio() {
 document.addEventListener('DOMContentLoaded', () => {
     console.log("DOM fully loaded. Initializing portfolio...");
     loadPortfolio();
+    checkPriceAlerts();
 });
 
+
+// Verifica alertas de preço ao carregar o portfólio
+function checkPriceAlerts() {
+    const banner = document.getElementById('alertBanner');
+    if (!banner) return;
+    fetch('/api/alerts/check')
+        .then(r => r.json())
+        .then(triggered => {
+            if (!triggered.length) return;
+            const fmt = v => '$' + parseFloat(v).toLocaleString('pt-PT', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            const items = triggered.map(a =>
+                `<li>${a.symbol}: preço atual ${fmt(a.current_price)} ${a.direction === 'above' ? 'subiu acima' : 'desceu abaixo'} de ${fmt(a.target_price)}</li>`
+            ).join('');
+            banner.innerHTML = `Alertas Disparados! <a href="/alerts" style="color:#fff;text-decoration:underline">Ver todos</a><ul style="margin:8px 0 0 18px;font-weight:normal;font-size:14px">${items}</ul>`;
+            banner.style.display = 'block';
+        })
+        .catch(() => {});
+}
 
 // Adicionar um log para verificar se o script está sendo executado
 console.log("Portfolio management script loaded.");

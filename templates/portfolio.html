@@ -26,10 +26,15 @@
         <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
         <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
         <li><a href="{{ url_for('transactions') }}">Histórico</a></li>
+        <li><a href="{{ url_for('alerts') }}">Alertas</a></li>
       </ul>
     </nav>
 
     <div class="container">
+      <!-- Banner de alertas disparados -->
+      <div id="alertBanner" style="display:none; background:#f39c12; color:#fff; padding:14px 20px;
+           border-radius:8px; margin-bottom:20px; font-weight:bold; font-size:15px;"></div>
+
       <h1>Gerenciador de Portfólio</h1>
 
       <div class="actions">
