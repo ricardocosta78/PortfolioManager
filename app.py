@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from valuation import calculate_stock_valuation
 from calculos import calculate_stock_metrics
 from collections import defaultdict
+from datetime import datetime
 import os
 
 app = Flask(__name__)
@@ -23,6 +24,16 @@ class Stock(db.Model):
     symbol = db.Column(db.String(10), nullable=False)
     quantity = db.Column(db.Float, nullable=False)
     purchase_price = db.Column(db.Float, nullable=False)
+
+# Modelo do histórico de transações
+class Transaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    symbol = db.Column(db.String(10), nullable=False)
+    action = db.Column(db.String(10), nullable=False)  # 'compra' ou 'venda'
+    quantity = db.Column(db.Float, nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    total = db.Column(db.Float, nullable=False)
+    date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 # Criação da base de dados
 with app.app_context():
@@ -192,6 +203,54 @@ def portfolio_summary():
         'profit_loss_pct': round(profit_loss_pct, 2),
         'stocks': stock_list
     })
+
+# Rota para a página de histórico
+@app.route('/transactions')
+def transactions():
+    return render_template('transactions.html')
+
+# Rota para registar uma transação
+@app.route('/api/add_transaction', methods=['POST'])
+def add_transaction():
+    data = request.json
+    t = Transaction(
+        symbol=data['symbol'].upper(),
+        action=data['action'],
+        quantity=data['quantity'],
+        price=data['price'],
+        total=data['quantity'] * data['price']
+    )
+    db.session.add(t)
+    db.session.commit()
+    return jsonify({'message': 'Transação registada com sucesso!'}), 201
+
+# Rota para obter todas as transações
+@app.route('/api/transactions', methods=['GET'])
+def get_transactions():
+    symbol = request.args.get('symbol', '').upper()
+    query = Transaction.query
+    if symbol:
+        query = query.filter_by(symbol=symbol)
+    txs = query.order_by(Transaction.date.desc()).all()
+    return jsonify([{
+        'id': t.id,
+        'symbol': t.symbol,
+        'action': t.action,
+        'quantity': t.quantity,
+        'price': t.price,
+        'total': t.total,
+        'date': t.date.strftime('%d/%m/%Y %H:%M')
+    } for t in txs])
+
+# Rota para apagar uma transação
+@app.route('/api/transactions/<int:tx_id>', methods=['DELETE'])
+def delete_transaction(tx_id):
+    t = db.session.get(Transaction, tx_id)
+    if t:
+        db.session.delete(t)
+        db.session.commit()
+        return jsonify({'message': 'Transação removida.'}), 200
+    return jsonify({'error': 'Transação não encontrada.'}), 404
 
 # Executa o servidor
 if __name__ == '__main__':

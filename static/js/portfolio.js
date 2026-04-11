@@ -114,6 +114,7 @@ function sellStock(button) {
     }
 
     updatePortfolioPercentages();
+    registerTransaction(symbol, 'venda', sellQuantity, currentPrice);
 }
 
 function removeStock(button) {
@@ -140,22 +141,26 @@ function removeStock(button) {
 function saveStock(symbol, quantity, purchasePrice) {
     fetch('/add_stock', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            symbol: symbol,
-            quantity: quantity,
-            purchase_price: purchasePrice
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, quantity, purchase_price: purchasePrice })
     })
-    .then(response => response.json())
-    .then(data => {
-        console.log(data.message);
+    .then(r => r.json())
+    .then(data => console.log(data.message))
+    .catch(error => console.error('Erro ao guardar a ação:', error));
+
+    // Registar no histórico
+    registerTransaction(symbol, 'compra', quantity, purchasePrice);
+}
+
+function registerTransaction(symbol, action, quantity, price) {
+    fetch('/api/add_transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, action, quantity, price })
     })
-    .catch(error => {
-        console.error('Erro ao guardar a ação:', error);
-    });
+    .then(r => r.json())
+    .then(data => console.log(data.message))
+    .catch(error => console.error('Erro ao registar transação:', error));
 }
 
 async function getCurrentPrice(symbol) {
