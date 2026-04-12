@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import yfinance as yf
 from flask_sqlalchemy import SQLAlchemy
 from valuation import calculate_stock_valuation
@@ -6,6 +6,8 @@ from calculos import calculate_stock_metrics
 from collections import defaultdict
 from datetime import datetime
 import os
+import csv
+import io
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
@@ -529,6 +531,56 @@ def check_alerts():
         db.session.commit()
 
     return jsonify(triggered)
+
+# ── Exportar CSV ─────────────────────────────────────────────────────────────
+
+def make_csv(headers, rows, filename):
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(headers)
+    w.writerows(rows)
+    return Response(
+        out.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
+
+@app.route('/export/portfolio')
+def export_portfolio():
+    stocks = Stock.query.all()
+    headers = ['Símbolo', 'Quantidade', 'Preço Compra', 'Total Investido']
+    rows = [(s.symbol, s.quantity, s.purchase_price,
+             round(s.quantity * s.purchase_price, 2)) for s in stocks]
+    return make_csv(headers, rows, 'portfolio.csv')
+
+@app.route('/export/transactions')
+def export_transactions():
+    symbol = request.args.get('symbol', '').upper()
+    q = Transaction.query
+    if symbol:
+        q = q.filter_by(symbol=symbol)
+    txs = q.order_by(Transaction.date.desc()).all()
+    headers = ['Data', 'Ticker', 'Tipo', 'Quantidade', 'Preço', 'Total']
+    rows = [(t.date.strftime('%d/%m/%Y %H:%M'), t.symbol, t.action,
+             t.quantity, t.price, t.total) for t in txs]
+    return make_csv(headers, rows, 'transacoes.csv')
+
+@app.route('/export/watchlist')
+def export_watchlist():
+    items = Watchlist.query.order_by(Watchlist.added_at.desc()).all()
+    headers = ['Ticker', 'Nota', 'Adicionado em']
+    rows = [(w.symbol, w.note or '', w.added_at.strftime('%d/%m/%Y')) for w in items]
+    return make_csv(headers, rows, 'watchlist.csv')
+
+@app.route('/export/alerts')
+def export_alerts():
+    alerts = PriceAlert.query.order_by(PriceAlert.created_at.desc()).all()
+    headers = ['Ticker', 'Preço Alvo', 'Condição', 'Estado', 'Criado em', 'Disparado em']
+    rows = [(a.symbol, a.target_price, a.direction,
+             'Activo' if a.active else 'Disparado',
+             a.created_at.strftime('%d/%m/%Y %H:%M'),
+             a.triggered_at.strftime('%d/%m/%Y %H:%M') if a.triggered_at else '') for a in alerts]
+    return make_csv(headers, rows, 'alertas.csv')
 
 # Executa o servidor
 if __name__ == '__main__':

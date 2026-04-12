@@ -102,6 +102,7 @@
         <input type="text" id="filterSymbol" placeholder="Filtrar por ticker..." />
         <button onclick="loadTransactions()">Filtrar</button>
         <button onclick="clearFilter()">Limpar</button>
+        <a id="exportBtn" href="/export/transactions" style="margin-left:auto;padding:8px 18px;background:#27ae60;color:#fff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">⬇ Exportar CSV</a>
       </div>
 
       <!-- Resumo -->
@@ -139,6 +140,9 @@
       function loadTransactions() {
         const symbol = document.getElementById('filterSymbol').value.trim().toUpperCase();
         const url = symbol ? `/api/transactions?symbol=${symbol}` : '/api/transactions';
+        // Atualizar link de exportar com o filtro atual
+        const exportUrl = symbol ? `/export/transactions?symbol=${symbol}` : '/export/transactions';
+        document.getElementById('exportBtn').href = exportUrl;
 
         fetch(url)
           .then(r => r.json())
