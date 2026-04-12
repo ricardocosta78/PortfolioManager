@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Watchlist</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <style>
+      .container { width: 92%; max-width: 1200px; margin: 30px auto; }
+      h1 { text-align: center; color: #2c3e50; margin-bottom: 26px; }
+
+      /* Formulário */
+      .add-card {
+        background: #fff; border-radius: 12px;
+        padding: 22px 28px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 24px;
+      }
+      .add-card h2 {
+        margin: 0 0 16px; font-size: 14px; color: #2c3e50;
+        text-transform: uppercase; letter-spacing: .5px;
+        border-bottom: 2px solid #3498db; padding-bottom: 8px;
+      }
+      .add-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+      .fg { display: flex; flex-direction: column; gap: 5px; }
+      .fg label { font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: 700; }
+      .fg input {
+        padding: 10px 14px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+        font-size: 14px; background: #fafafa; box-sizing: border-box;
+      }
+      .fg input:focus { outline: none; border-color: #3498db; background: #fff; }
+      #fgSym input  { width: 130px; text-transform: uppercase; }
+      #fgNote input { width: 280px; }
+      .btn-add {
+        padding: 10px 24px; background: #3498db; color: #fff;
+        border: none; border-radius: 8px; font-size: 14px;
+        font-weight: 600; cursor: pointer; width: auto; height: 42px;
+      }
+      .btn-add:hover { background: #2980b9; }
+
+      /* Toolbar */
+      .toolbar {
+        display: flex; align-items: center; gap: 12px;
+        margin-bottom: 16px; flex-wrap: wrap;
+      }
+      .toolbar input {
+        padding: 8px 14px; border: 1.5px solid #ddd; border-radius: 8px;
+        font-size: 14px; width: 200px; background: #fafafa;
+      }
+      .toolbar input:focus { outline: none; border-color: #3498db; }
+      .btn-refresh {
+        padding: 8px 18px; background: #27ae60; color: #fff;
+        border: none; border-radius: 8px; font-size: 13px;
+        font-weight: 600; cursor: pointer; width: auto;
+      }
+      .btn-refresh:hover { background: #219a52; }
+      .last-update { font-size: 12px; color: #95a5a6; margin-left: auto; }
+
+      /* Tabela */
+      .panel {
+        background: #fff; border-radius: 12px;
+        padding: 20px 24px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+      }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th {
+        text-align: left; padding: 11px 14px;
+        background: #2c3e50; color: #fff;
+        font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+      }
+      th:first-child { border-radius: 6px 0 0 0; }
+      th:last-child  { border-radius: 0 6px 0 0; }
+      td { padding: 11px 14px; border-bottom: 1px solid #f0f0f0; color: #2c3e50; vertical-align: middle; }
+      tr:last-child td { border-bottom: none; }
+      tr:hover td { background: #f8fafc; }
+
+      .sym-link { font-weight: 700; color: #2c3e50; text-decoration: none; }
+      .sym-link:hover { color: #3498db; }
+      .co-name { font-size: 12px; color: #95a5a6; margin-top: 2px; }
+
+      .pos { color: #27ae60; font-weight: 700; }
+      .neg { color: #e74c3c; font-weight: 700; }
+
+      .note-cell { font-size: 12px; color: #7f8c8d; max-width: 180px; }
+
+      .action-btns { display: flex; gap: 8px; align-items: center; }
+      .btn-icon {
+        background: none; border: none; cursor: pointer; font-size: 15px;
+        padding: 4px 6px; border-radius: 6px; width: auto; text-decoration: none;
+        color: #5d6d7e; transition: background .15s;
+      }
+      .btn-icon:hover { background: #f0f0f0; }
+      .btn-del { color: #e74c3c; }
+      .btn-del:hover { background: #fdeaea; }
+
+      /* Progresso 52s */
+      .bar52 {
+        height: 5px; background: #ecf0f1; border-radius: 3px;
+        margin-top: 4px; width: 100px; overflow: hidden;
+      }
+      .bar52-fill { height: 100%; background: #3498db; border-radius: 3px; }
+
+      /* Loading por linha */
+      .loading-row td { text-align: center; color: #bbb; padding: 40px; font-size: 14px; }
+      .spinner-sm {
+        display: inline-block; width: 16px; height: 16px;
+        border: 2px solid #ddd; border-top-color: #3498db;
+        border-radius: 50%; animation: spin .7s linear infinite;
+        vertical-align: middle; margin-right: 6px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .empty { text-align: center; color: #bdc3c7; padding: 50px; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <nav class="main-nav">
+      <ul>
+        <li><a href="{{ url_for('index') }}">Home</a></li>
+        <li><a href="{{ url_for('portfolio') }}">Portfolio</a></li>
+        <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
+        <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
+        <li><a href="{{ url_for('transactions') }}">Histórico</a></li>
+        <li><a href="{{ url_for('alerts') }}">Alertas</a></li>
+        <li><a href="{{ url_for('comparator') }}">Comparador</a></li>
+        <li><a href="{{ url_for('chart_page') }}">Gráfico</a></li>
+        <li><a href="{{ url_for('watchlist') }}">Watchlist</a></li>
+      </ul>
+    </nav>
+
+    <div class="container">
+      <h1>Watchlist</h1>
+
+      <!-- Adicionar -->
+      <div class="add-card">
+        <h2>Adicionar Ação</h2>
+        <div class="add-row">
+          <div class="fg" id="fgSym">
+            <label>Ticker</label>
+            <input id="wSym" placeholder="ex: MSFT" maxlength="10" />
+          </div>
+          <div class="fg" id="fgNote">
+            <label>Nota (opcional)</label>
+            <input id="wNote" placeholder="ex: Aguardar correção" maxlength="120" />
+          </div>
+          <button class="btn-add" onclick="addToWatchlist()">+ Adicionar</button>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <input id="filterInput" placeholder="Filtrar por ticker ou nota..." oninput="filterTable()" />
+        <button class="btn-refresh" onclick="refreshPrices()">↻ Atualizar Preços</button>
+        <span class="last-update" id="lastUpdate"></span>
+      </div>
+
+      <!-- Tabela -->
+      <div class="panel">
+        <table id="wTable">
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Preço</th>
+              <th>Var. Hoje</th>
+              <th>52s Mín/Máx</th>
+              <th>P/E</th>
+              <th>Market Cap</th>
+              <th>Nota</th>
+              <th>Adicionado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="wBody">
+            <tr class="loading-row">
+              <td colspan="9"><span class="spinner-sm"></span>A carregar...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      let wData = [];   // { id, symbol, note, added_at }
+      let prices = {};  // symbol → price data
+
+      function fmtCap(v) {
+        if (!v) return '—';
+        if (v >= 1e12) return (v/1e12).toFixed(2) + 'T';
+        if (v >= 1e9)  return (v/1e9).toFixed(2) + 'B';
+        if (v >= 1e6)  return (v/1e6).toFixed(2) + 'M';
+        return v;
+      }
+      function fmtP(v) { return v != null ? '$' + parseFloat(v).toFixed(2) : '—'; }
+      function fmtX(v) { return v != null ? parseFloat(v).toFixed(1) + 'x' : '—'; }
+
+      function renderRows(data) {
+        const filter = document.getElementById('filterInput').value.toLowerCase();
+        const filtered = data.filter(w =>
+          w.symbol.toLowerCase().includes(filter) ||
+          (w.note || '').toLowerCase().includes(filter)
+        );
+        if (!filtered.length) {
+          document.getElementById('wBody').innerHTML =
+            `<tr><td colspan="9" class="empty">Sem ações na watchlist.</td></tr>`;
+          return;
+        }
+
+        document.getElementById('wBody').innerHTML = filtered.map(w => {
+          const p = prices[w.symbol];
+          const loading = !p;
+          const err     = p && p.error;
+
+          let priceCell = loading ? '<span class="spinner-sm"></span>' : (err ? '—' : fmtP(p.price));
+          let chgCell   = '—';
+          if (!loading && !err && p.chg_pct != null) {
+            const cls = p.chg_pct >= 0 ? 'pos' : 'neg';
+            chgCell = `<span class="${cls}">${p.chg_pct >= 0 ? '+' : ''}${p.chg_pct.toFixed(2)}%</span>`;
+          }
+
+          let bar52 = '—';
+          if (!loading && !err && p.week52_low != null && p.week52_high != null && p.price != null) {
+            const range = p.week52_high - p.week52_low;
+            const pct   = range > 0 ? Math.round((p.price - p.week52_low) / range * 100) : 0;
+            bar52 = `
+              <div style="font-size:11px;color:#7f8c8d">
+                ${fmtP(p.week52_low)} – ${fmtP(p.week52_high)}
+              </div>
+              <div class="bar52"><div class="bar52-fill" style="width:${pct}%"></div></div>`;
+          }
+
+          return `<tr data-sym="${w.symbol}" data-note="${(w.note||'').toLowerCase()}">
+            <td>
+              <a class="sym-link" href="/chart?symbol=${w.symbol}">${w.symbol}</a>
+              <div class="co-name">${(!loading && !err && p.name) ? p.name.substring(0,28) : ''}</div>
+            </td>
+            <td>${priceCell}</td>
+            <td>${chgCell}</td>
+            <td>${bar52}</td>
+            <td>${(!loading && !err) ? fmtX(p.pe) : '—'}</td>
+            <td>${(!loading && !err) ? fmtCap(p.market_cap) : '—'}</td>
+            <td class="note-cell">${w.note || ''}</td>
+            <td style="font-size:12px;color:#95a5a6">${w.added_at}</td>
+            <td>
+              <div class="action-btns">
+                <a class="btn-icon" href="/chart?symbol=${w.symbol}" title="Gráfico">📈</a>
+                <a class="btn-icon" href="/stock_analysis#${w.symbol}" title="Análise" onclick="sessionStorage.setItem('analysisSymbol','${w.symbol}')">🔍</a>
+                <button class="btn-icon btn-del" onclick="removeItem(${w.id})" title="Remover">🗑️</button>
+              </div>
+            </td>
+          </tr>`;
+        }).join('');
+      }
+
+      function loadWatchlist() {
+        fetch('/api/watchlist')
+          .then(r => r.json())
+          .then(data => {
+            wData = data;
+            if (!data.length) {
+              document.getElementById('wBody').innerHTML =
+                '<tr><td colspan="9" class="empty">Watchlist vazia. Adiciona o primeiro ticker acima.</td></tr>';
+              return;
+            }
+            renderRows(wData);
+            fetchPrices(data.map(w => w.symbol));
+          });
+      }
+
+      function fetchPrices(symbols) {
+        fetch('/api/watchlist/prices', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({symbols})
+        })
+        .then(r => r.json())
+        .then(data => {
+          prices = {...prices, ...data};
+          renderRows(wData);
+          document.getElementById('lastUpdate').textContent =
+            'Atualizado: ' + new Date().toLocaleTimeString('pt-PT');
+        });
+      }
+
+      function refreshPrices() {
+        if (!wData.length) return;
+        prices = {};
+        renderRows(wData);
+        fetchPrices(wData.map(w => w.symbol));
+      }
+
+      function addToWatchlist() {
+        const sym  = document.getElementById('wSym').value.trim().toUpperCase();
+        const note = document.getElementById('wNote').value.trim();
+        if (!sym) { alert('Introduz um ticker.'); return; }
+
+        fetch('/api/watchlist', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({symbol: sym, note})
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) { alert(data.error); return; }
+          document.getElementById('wSym').value  = '';
+          document.getElementById('wNote').value = '';
+          loadWatchlist();
+        });
+      }
+
+      function removeItem(id) {
+        if (!confirm('Remover da watchlist?')) return;
+        fetch(`/api/watchlist/${id}`, {method: 'DELETE'})
+          .then(() => loadWatchlist());
+      }
+
+      function filterTable() { renderRows(wData); }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        loadWatchlist();
+        document.getElementById('wSym').addEventListener('keydown', e => {
+          if (e.key === 'Enter') document.getElementById('wNote').focus();
+        });
+        document.getElementById('wNote').addEventListener('keydown', e => {
+          if (e.key === 'Enter') addToWatchlist();
+        });
+      });
+    </script>
+  </body>
+</html>

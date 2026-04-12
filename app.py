@@ -262,6 +262,73 @@ def delete_transaction(tx_id):
         return jsonify({'message': 'Transação removida.'}), 200
     return jsonify({'error': 'Transação não encontrada.'}), 404
 
+# ── Watchlist ────────────────────────────────────────────────────────────────
+
+class Watchlist(db.Model):
+    id     = db.Column(db.Integer, primary_key=True)
+    symbol = db.Column(db.String(10), nullable=False, unique=True)
+    note   = db.Column(db.String(120), nullable=True)
+    added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+@app.route('/watchlist')
+def watchlist():
+    return render_template('watchlist.html')
+
+@app.route('/api/watchlist', methods=['GET'])
+def get_watchlist():
+    items = Watchlist.query.order_by(Watchlist.added_at.desc()).all()
+    return jsonify([{'id': w.id, 'symbol': w.symbol, 'note': w.note or '',
+                     'added_at': w.added_at.strftime('%d/%m/%Y')} for w in items])
+
+@app.route('/api/watchlist', methods=['POST'])
+def add_watchlist():
+    data   = request.json
+    symbol = data.get('symbol', '').upper().strip()
+    note   = data.get('note', '').strip()[:120]
+    if not symbol:
+        return jsonify({'error': 'Símbolo em falta.'}), 400
+    if Watchlist.query.filter_by(symbol=symbol).first():
+        return jsonify({'error': f'{symbol} já está na watchlist.'}), 409
+    db.session.add(Watchlist(symbol=symbol, note=note))
+    db.session.commit()
+    return jsonify({'message': 'Adicionado.'}), 201
+
+@app.route('/api/watchlist/<int:wid>', methods=['DELETE'])
+def delete_watchlist(wid):
+    w = db.session.get(Watchlist, wid)
+    if not w:
+        return jsonify({'error': 'Não encontrado.'}), 404
+    db.session.delete(w)
+    db.session.commit()
+    return jsonify({'message': 'Removido.'})
+
+@app.route('/api/watchlist/prices', methods=['POST'])
+def watchlist_prices():
+    """Recebe lista de símbolos, devolve preço + variação diária + métricas."""
+    symbols = request.json.get('symbols', [])
+    result  = {}
+    for sym in symbols:
+        try:
+            tk   = yf.Ticker(sym)
+            info = tk.info
+            hist = tk.history(period='2d')
+            prev  = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else None
+            price = float(hist['Close'].iloc[-1]) if not hist.empty else None
+            chg_pct = round((price - prev) / prev * 100, 2) if price and prev else None
+            result[sym] = {
+                'price':        round(price, 2) if price else None,
+                'chg_pct':      chg_pct,
+                'market_cap':   info.get('marketCap'),
+                'pe':           info.get('trailingPE'),
+                'week52_high':  info.get('fiftyTwoWeekHigh'),
+                'week52_low':   info.get('fiftyTwoWeekLow'),
+                'volume':       info.get('regularMarketVolume'),
+                'name':         info.get('longName', sym),
+            }
+        except Exception:
+            result[sym] = {'error': True}
+    return jsonify(result)
+
 # ── Gráfico Histórico ────────────────────────────────────────────────────────
 
 @app.route('/chart')
