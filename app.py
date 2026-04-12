@@ -262,6 +262,62 @@ def delete_transaction(tx_id):
         return jsonify({'message': 'Transação removida.'}), 200
     return jsonify({'error': 'Transação não encontrada.'}), 404
 
+# ── Gráfico Histórico ────────────────────────────────────────────────────────
+
+@app.route('/chart')
+def chart_page():
+    return render_template('chart.html')
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    symbol = request.args.get('symbol', '').upper().strip()
+    period = request.args.get('period', '1y')   # 1w 1mo 3mo 6mo 1y 2y 5y
+    if not symbol:
+        return jsonify({'error': 'Símbolo em falta.'}), 400
+
+    period_map = {
+        '1w': '5d', '1mo': '1mo', '3mo': '3mo',
+        '6mo': '6mo', '1y': '1y', '2y': '2y', '5y': '5y'
+    }
+    yf_period = period_map.get(period, '1y')
+    interval  = '1d' if period not in ('1w',) else '1h'
+
+    try:
+        tk   = yf.Ticker(symbol)
+        hist = tk.history(period=yf_period, interval=interval)
+        if hist.empty:
+            return jsonify({'error': f'Sem dados para {symbol}.'}), 404
+
+        info = tk.info
+        closes = hist['Close'].tolist()
+
+        # Médias móveis
+        def ma(closes, n):
+            result = [None] * len(closes)
+            for i in range(n - 1, len(closes)):
+                result[i] = round(sum(closes[i - n + 1:i + 1]) / n, 4)
+            return result
+
+        dates   = [str(d.date()) if hasattr(d, 'date') else str(d)[:10] for d in hist.index]
+        payload = {
+            'symbol':   symbol,
+            'name':     info.get('longName', symbol),
+            'currency': info.get('currency', 'USD'),
+            'dates':    dates,
+            'close':    [round(float(v), 4) for v in closes],
+            'open':     [round(float(v), 4) for v in hist['Open'].tolist()],
+            'high':     [round(float(v), 4) for v in hist['High'].tolist()],
+            'low':      [round(float(v), 4) for v in hist['Low'].tolist()],
+            'volume':   [int(v) for v in hist['Volume'].tolist()],
+            'ma50':     ma(closes, 50),
+            'ma200':    ma(closes, 200),
+            'current_price': info.get('currentPrice') or round(float(closes[-1]), 2),
+            'chg':      round((closes[-1] - closes[0]) / closes[0] * 100, 2) if closes[0] else 0,
+        }
+        return jsonify(payload)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # ── Comparador de Ações ──────────────────────────────────────────────────────
 
 @app.route('/comparator')

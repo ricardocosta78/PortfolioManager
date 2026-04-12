@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gráfico Histórico</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      .container { width: 92%; max-width: 1200px; margin: 30px auto; }
+      h1 { text-align: center; color: #2c3e50; margin-bottom: 24px; }
+
+      /* Barra de pesquisa */
+      .search-bar {
+        display: flex; gap: 10px; align-items: center;
+        background: #fff; border-radius: 12px;
+        padding: 18px 24px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 22px; flex-wrap: wrap;
+      }
+      .search-bar input {
+        padding: 10px 16px; border: 1.5px solid #ddd; border-radius: 8px;
+        font-size: 15px; width: 160px; text-transform: uppercase;
+        background: #fafafa;
+      }
+      .search-bar input:focus { outline: none; border-color: #3498db; background: #fff; }
+      .btn-search {
+        padding: 10px 26px; background: #3498db; color: #fff;
+        border: none; border-radius: 8px; font-size: 14px;
+        font-weight: 600; cursor: pointer; width: auto;
+      }
+      .btn-search:hover { background: #2980b9; }
+
+      /* Info card */
+      #infoCard {
+        display: none;
+        background: #fff; border-radius: 12px;
+        padding: 18px 24px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 18px;
+        display: none; align-items: center; gap: 24px; flex-wrap: wrap;
+      }
+      .info-name   { font-size: 20px; font-weight: 700; color: #2c3e50; }
+      .info-symbol { font-size: 13px; color: #95a5a6; margin-top: 2px; }
+      .info-price  { font-size: 28px; font-weight: 700; color: #2c3e50; }
+      .info-chg    { font-size: 15px; font-weight: 700; margin-top: 2px; }
+      .info-chg.pos { color: #27ae60; }
+      .info-chg.neg { color: #e74c3c; }
+      .info-sep    { flex: 1; }
+
+      /* Período */
+      .period-bar {
+        display: flex; gap: 6px; flex-wrap: wrap;
+        background: #fff; border-radius: 10px;
+        padding: 12px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 18px; align-items: center;
+      }
+      .period-label { font-size: 12px; color: #95a5a6; text-transform: uppercase;
+        font-weight: 700; margin-right: 6px; }
+      .btn-period {
+        padding: 6px 16px; border: 1.5px solid #ddd; border-radius: 20px;
+        background: #fff; font-size: 13px; font-weight: 600;
+        cursor: pointer; color: #5d6d7e; width: auto; transition: all .15s;
+      }
+      .btn-period:hover  { border-color: #3498db; color: #3498db; background: #eaf4fb; }
+      .btn-period.active { background: #3498db; color: #fff; border-color: #3498db; }
+
+      /* Toggles MA */
+      .toggle-row {
+        display: flex; gap: 14px; align-items: center;
+        margin-left: auto; flex-wrap: wrap;
+      }
+      .toggle-btn {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 13px; font-weight: 600; cursor: pointer;
+        padding: 5px 12px; border-radius: 20px; border: 1.5px solid #ddd;
+        background: #fff; color: #5d6d7e; width: auto; transition: all .15s;
+      }
+      .toggle-btn.on { color: #fff; }
+      .toggle-btn.on.ma50  { background: #e67e22; border-color: #e67e22; }
+      .toggle-btn.on.ma200 { background: #8e44ad; border-color: #8e44ad; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+      .dot.ma50  { background: #e67e22; }
+      .dot.ma200 { background: #8e44ad; }
+
+      /* Gráficos */
+      .chart-card {
+        background: #fff; border-radius: 12px;
+        padding: 20px 24px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 18px;
+      }
+      #priceChart { height: 380px !important; }
+      #volChart   { height: 120px !important; }
+
+      /* Loading / error */
+      #loading { display:none; text-align:center; padding:60px; color:#7f8c8d; font-size:15px; }
+      .spinner {
+        display:inline-block; width:28px; height:28px;
+        border:3px solid #ddd; border-top-color:#3498db;
+        border-radius:50%; animation:spin .7s linear infinite;
+        vertical-align:middle; margin-right:10px;
+      }
+      @keyframes spin { to { transform:rotate(360deg); } }
+      #errorMsg { display:none; text-align:center; color:#e74c3c; padding:30px; font-size:15px; }
+    </style>
+  </head>
+  <body>
+    <nav class="main-nav">
+      <ul>
+        <li><a href="{{ url_for('index') }}">Home</a></li>
+        <li><a href="{{ url_for('portfolio') }}">Portfolio</a></li>
+        <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
+        <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
+        <li><a href="{{ url_for('transactions') }}">Histórico</a></li>
+        <li><a href="{{ url_for('alerts') }}">Alertas</a></li>
+        <li><a href="{{ url_for('comparator') }}">Comparador</a></li>
+        <li><a href="{{ url_for('chart_page') }}">Gráfico</a></li>
+      </ul>
+    </nav>
+
+    <div class="container">
+      <h1>Gráfico Histórico</h1>
+
+      <!-- Pesquisa -->
+      <div class="search-bar">
+        <input id="symInput" placeholder="Ticker (ex: AAPL)" maxlength="12" />
+        <button class="btn-search" onclick="load()">Ver Gráfico</button>
+      </div>
+
+      <!-- Info do ativo -->
+      <div id="infoCard">
+        <div>
+          <div class="info-name"   id="infoName"></div>
+          <div class="info-symbol" id="infoSym"></div>
+        </div>
+        <div>
+          <div class="info-price" id="infoPrice"></div>
+          <div class="info-chg"   id="infoChg"></div>
+        </div>
+        <div class="info-sep"></div>
+      </div>
+
+      <!-- Período + toggles MA -->
+      <div class="period-bar" id="periodBar" style="display:none">
+        <span class="period-label">Período:</span>
+        <button class="btn-period" data-p="1w"  onclick="setPeriod(this)">1S</button>
+        <button class="btn-period" data-p="1mo" onclick="setPeriod(this)">1M</button>
+        <button class="btn-period" data-p="3mo" onclick="setPeriod(this)">3M</button>
+        <button class="btn-period" data-p="6mo" onclick="setPeriod(this)">6M</button>
+        <button class="btn-period active" data-p="1y" onclick="setPeriod(this)">1A</button>
+        <button class="btn-period" data-p="2y"  onclick="setPeriod(this)">2A</button>
+        <button class="btn-period" data-p="5y"  onclick="setPeriod(this)">5A</button>
+        <div class="toggle-row">
+          <button id="btnMA50"  class="toggle-btn ma50  on" onclick="toggleMA('ma50')">
+            <span class="dot ma50"></span>MM 50
+          </button>
+          <button id="btnMA200" class="toggle-btn ma200 on" onclick="toggleMA('ma200')">
+            <span class="dot ma200"></span>MM 200
+          </button>
+        </div>
+      </div>
+
+      <div id="loading"><span class="spinner"></span>A carregar dados...</div>
+      <div id="errorMsg"></div>
+
+      <!-- Gráfico de preço -->
+      <div class="chart-card" id="priceCard" style="display:none">
+        <canvas id="priceChart"></canvas>
+      </div>
+
+      <!-- Gráfico de volume -->
+      <div class="chart-card" id="volCard" style="display:none">
+        <canvas id="volChart"></canvas>
+      </div>
+    </div>
+
+    <script>
+      let currentSymbol = '';
+      let currentPeriod = '1y';
+      let showMA50  = true;
+      let showMA200 = true;
+      let priceChartInst = null;
+      let volChartInst   = null;
+
+      function load(sym, per) {
+        sym = (sym || document.getElementById('symInput').value.trim().toUpperCase());
+        per = per || currentPeriod;
+        if (!sym) return;
+        currentSymbol = sym;
+        currentPeriod = per;
+
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('errorMsg').style.display = 'none';
+        document.getElementById('priceCard').style.display = 'none';
+        document.getElementById('volCard').style.display   = 'none';
+        document.getElementById('infoCard').style.display  = 'none';
+        document.getElementById('periodBar').style.display = 'none';
+
+        fetch(`/api/history?symbol=${sym}&period=${per}`)
+          .then(r => r.json())
+          .then(data => {
+            document.getElementById('loading').style.display = 'none';
+            if (data.error) { showError(data.error); return; }
+            renderInfo(data);
+            renderPrice(data);
+            renderVolume(data);
+            document.getElementById('periodBar').style.display = 'flex';
+          })
+          .catch(e => {
+            document.getElementById('loading').style.display = 'none';
+            showError('Erro ao obter dados.');
+          });
+      }
+
+      function showError(msg) {
+        const el = document.getElementById('errorMsg');
+        el.textContent = msg;
+        el.style.display = 'block';
+      }
+
+      function renderInfo(data) {
+        const chg = data.chg;
+        document.getElementById('infoName').textContent  = data.name;
+        document.getElementById('infoSym').textContent   = `${data.symbol} · ${data.currency}`;
+        document.getElementById('infoPrice').textContent = `$${parseFloat(data.current_price).toFixed(2)}`;
+        const chgEl = document.getElementById('infoChg');
+        chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% no período`;
+        chgEl.className = 'info-chg ' + (chg >= 0 ? 'pos' : 'neg');
+        document.getElementById('infoCard').style.display = 'flex';
+      }
+
+      function renderPrice(data) {
+        const up = data.close[data.close.length - 1] >= data.close[0];
+        const color = up ? '#27ae60' : '#e74c3c';
+        const fill  = up ? 'rgba(39,174,96,.07)' : 'rgba(231,76,60,.07)';
+
+        const datasets = [{
+          label: data.symbol,
+          data: data.close,
+          borderColor: color,
+          backgroundColor: fill,
+          fill: true,
+          tension: 0.3,
+          pointRadius: data.close.length > 100 ? 0 : 3,
+          borderWidth: 2,
+          order: 1,
+        }];
+
+        if (showMA50) datasets.push({
+          label: 'MM 50',
+          data: data.ma50,
+          borderColor: '#e67e22',
+          borderWidth: 1.5,
+          borderDash: [4, 3],
+          pointRadius: 0,
+          fill: false,
+          tension: 0.3,
+          order: 2,
+          spanGaps: true,
+        });
+
+        if (showMA200) datasets.push({
+          label: 'MM 200',
+          data: data.ma200,
+          borderColor: '#8e44ad',
+          borderWidth: 1.5,
+          borderDash: [6, 3],
+          pointRadius: 0,
+          fill: false,
+          tension: 0.3,
+          order: 3,
+          spanGaps: true,
+        });
+
+        if (priceChartInst) priceChartInst.destroy();
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        priceChartInst = new Chart(ctx, {
+          type: 'line',
+          data: { labels: data.dates, datasets },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: {
+                labels: { font: { size: 12 }, usePointStyle: true }
+              },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `${ctx.dataset.label}: $${ctx.parsed.y?.toFixed(2) ?? '—'}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: {
+                  maxTicksLimit: 10,
+                  font: { size: 11 }
+                },
+                grid: { color: '#f5f5f5' }
+              },
+              y: {
+                ticks: {
+                  callback: v => '$' + v.toFixed(2),
+                  font: { size: 11 }
+                },
+                grid: { color: '#f5f5f5' }
+              }
+            }
+          }
+        });
+        document.getElementById('priceCard').style.display = 'block';
+      }
+
+      function renderVolume(data) {
+        const colors = data.close.map((c, i) =>
+          i === 0 ? '#3498db88' : (c >= data.close[i-1] ? '#27ae6088' : '#e74c3c88')
+        );
+
+        if (volChartInst) volChartInst.destroy();
+        const ctx = document.getElementById('volChart').getContext('2d');
+        volChartInst = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: data.dates,
+            datasets: [{
+              label: 'Volume',
+              data: data.volume,
+              backgroundColor: colors,
+              borderWidth: 0,
+              borderRadius: 2,
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: ctx => 'Volume: ' + ctx.parsed.y.toLocaleString('pt-PT')
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: { maxTicksLimit: 10, font: { size: 10 } },
+                grid: { display: false }
+              },
+              y: {
+                ticks: {
+                  callback: v => {
+                    if (v >= 1e9) return (v/1e9).toFixed(1) + 'B';
+                    if (v >= 1e6) return (v/1e6).toFixed(1) + 'M';
+                    if (v >= 1e3) return (v/1e3).toFixed(0) + 'K';
+                    return v;
+                  },
+                  font: { size: 10 }
+                },
+                grid: { color: '#f5f5f5' }
+              }
+            }
+          }
+        });
+        document.getElementById('volCard').style.display = 'block';
+      }
+
+      function setPeriod(btn) {
+        document.querySelectorAll('.btn-period').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        load(currentSymbol, btn.dataset.p);
+      }
+
+      function toggleMA(which) {
+        if (which === 'ma50') {
+          showMA50 = !showMA50;
+          document.getElementById('btnMA50').classList.toggle('on', showMA50);
+        } else {
+          showMA200 = !showMA200;
+          document.getElementById('btnMA200').classList.toggle('on', showMA200);
+        }
+        if (currentSymbol) load(currentSymbol, currentPeriod);
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('symInput').addEventListener('keydown', e => {
+          if (e.key === 'Enter') load();
+        });
+        // Se vier ?symbol= na URL
+        const sym = new URLSearchParams(window.location.search).get('symbol');
+        if (sym) {
+          document.getElementById('symInput').value = sym;
+          load(sym);
+        }
+      });
+    </script>
+  </body>
+</html>
