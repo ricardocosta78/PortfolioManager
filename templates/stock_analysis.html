@@ -5,20 +5,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Informação Stock</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-      .container { width: 90%; margin: auto; padding: 20px; }
-      #content   { background: #fff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,.1); }
+      .container { width: 92%; max-width: 1300px; margin: 28px auto; }
+      #content   { }
 
-      #tickerInput {
-        width: calc(100% - 130px); padding: 10px;
-        border: 1px solid #ddd; border-radius: 4px; font-size: 16px;
+      /* ── Search card ── */
+      .sa-search-card {
+        background: #fff; border-radius: 12px; padding: 22px 26px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.08); margin-bottom: 20px;
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
       }
+      #tickerInput {
+        flex: 1; min-width: 160px; max-width: 260px;
+        padding: 11px 16px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+        font-size: 16px; text-transform: uppercase; background: #fafafa;
+        transition: border-color .2s;
+      }
+      #tickerInput:focus { outline: none; border-color: #3498db; background: #fff; }
       button {
-        padding: 12px 20px; background: #3498db; color: #fff;
-        border: none; border-radius: 4px; cursor: pointer;
-        font-size: 16px; transition: background .3s;
+        padding: 11px 26px; background: #3498db; color: #fff;
+        border: none; border-radius: 8px; cursor: pointer;
+        font-size: 15px; font-weight: 600; width: auto; transition: background .2s;
       }
       button:hover { background: #2980b9; }
+
+      /* ── Quick actions ── */
+      #quickActions {
+        display: none; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;
+      }
+      .qa-btn {
+        padding: 9px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+        cursor: pointer; border: 1.5px solid; text-decoration: none;
+        display: inline-flex; align-items: center; gap: 5px;
+        transition: all .15s; width: auto;
+      }
+      .qa-chart { color: #3498db; border-color: #3498db; background: #eaf4fb; }
+      .qa-chart:hover { background: #3498db; color: #fff; }
+      .qa-dcf   { color: #27ae60; border-color: #27ae60; background: #eafaf1; }
+      .qa-dcf:hover { background: #27ae60; color: #fff; }
+      .qa-wl    { color: #8e44ad; border-color: #8e44ad; background: #f5eef8; }
+      .qa-wl:hover { background: #8e44ad; color: #fff; }
+      .qa-alert { color: #e67e22; border-color: #e67e22; background: #fef5ec; }
+      .qa-alert:hover { background: #e67e22; color: #fff; }
+      .qa-comp  { color: #5d6d7e; border-color: #bdc3c7; background: #f8f9fa; }
+      .qa-comp:hover { background: #ecf0f1; }
+
+      /* ── Mini chart ── */
+      #miniChartPanel {
+        display: none; background: #fff; border-radius: 12px;
+        padding: 20px 24px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 20px;
+      }
+      .mini-chart-header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 12px;
+      }
+      .mini-chart-header h3 {
+        margin: 0; font-size: 13px; color: #2c3e50;
+        text-transform: uppercase; letter-spacing: .5px;
+        border-bottom: 2px solid #3498db; padding-bottom: 6px;
+      }
+      .mini-price-info { text-align: right; }
+      .mini-price { font-size: 22px; font-weight: 700; color: #2c3e50; }
+      .mini-chg   { font-size: 13px; font-weight: 600; margin-top: 2px; }
+      .mini-chg.pos { color: #27ae60; }
+      .mini-chg.neg { color: #e74c3c; }
+      #miniCanvas  { height: 150px !important; }
 
       /* ── Scoring panel ── */
       .scoring-panel {
@@ -125,8 +178,37 @@
 
     <div class="container">
       <div id="content">
-        <input type="text" id="tickerInput" placeholder="Ticker (ex: AAPL)" />
-        <button onclick="fetchStockAnalysis()">Analisar</button>
+
+        <!-- Search card -->
+        <div class="sa-search-card">
+          <input type="text" id="tickerInput" placeholder="Ticker (ex: AAPL)" />
+          <button onclick="fetchStockAnalysis()">Analisar</button>
+          <div id="loadingInline" style="display:none;font-size:13px;color:#95a5a6">
+            <span style="display:inline-block;width:14px;height:14px;border:2px solid #ddd;border-top-color:#3498db;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px"></span>
+            A obter dados...
+          </div>
+        </div>
+
+        <!-- Quick actions (visible after analysis) -->
+        <div id="quickActions">
+          <a id="qaChart" href="#" class="qa-btn qa-chart">📈 Gráfico</a>
+          <a id="qaDCF"   href="#" class="qa-btn qa-dcf">💡 DCF</a>
+          <a id="qaComp"  href="#" class="qa-btn qa-comp">⚖️ Comparar</a>
+          <button class="qa-btn qa-wl"    id="qaWL">👁 Watchlist</button>
+          <button class="qa-btn qa-alert" id="qaAlert">🔔 Adicionar Alerta</button>
+        </div>
+
+        <!-- Mini chart -->
+        <div id="miniChartPanel">
+          <div class="mini-chart-header">
+            <h3 id="miniChartTitle">Preço — 6 Meses</h3>
+            <div class="mini-price-info">
+              <div class="mini-price" id="miniPrice"></div>
+              <div class="mini-chg"   id="miniChg"></div>
+            </div>
+          </div>
+          <canvas id="miniCanvas"></canvas>
+        </div>
 
         <!-- Scoring -->
         <div id="scoring" style="display:none" class="scoring-panel"></div>
@@ -324,15 +406,22 @@
       /* ──────────────────────────────────────────
          Fetch & display
       ────────────────────────────────────────── */
+      let miniChartInst = null;
+      let _currentSym   = '';
+
       function fetchStockAnalysis() {
         const symbol = document.getElementById('tickerInput').value.trim().toUpperCase();
         if (!symbol) { alert('Insere um símbolo válido.'); return; }
+        _currentSym = symbol;
 
         // Loading state
-        ['title','values','ratios','margins','saude','tecnico'].forEach(id => {
-          document.getElementById(id).innerHTML = `<h2>A carregar...</h2>`;
-        });
+        document.getElementById('loadingInline').style.display = 'inline-block';
+        document.getElementById('quickActions').style.display  = 'none';
+        document.getElementById('miniChartPanel').style.display = 'none';
         document.getElementById('scoring').style.display = 'none';
+        ['title','values','ratios','margins','saude','tecnico'].forEach(id => {
+          document.getElementById(id).innerHTML = `<h2 style="color:#bdc3c7">A carregar...</h2>`;
+        });
 
         fetch('/stock_analysis', {
           method: 'POST',
@@ -341,10 +430,112 @@
         })
         .then(r => { if (!r.ok) throw new Error(); return r.json(); })
         .then(data => {
+          document.getElementById('loadingInline').style.display = 'none';
           if (data.error) { alert(data.error); return; }
           displayResults(data, symbol);
+          showQuickActions(symbol);
+          loadMiniChart(symbol);
         })
-        .catch(() => alert('Erro ao obter dados da ação.'));
+        .catch(() => {
+          document.getElementById('loadingInline').style.display = 'none';
+          alert('Erro ao obter dados da ação.');
+        });
+      }
+
+      /* ── Quick action buttons ── */
+      function showQuickActions(symbol) {
+        document.getElementById('qaChart').href = `/chart?symbol=${symbol}`;
+        document.getElementById('qaDCF').href   = `/dcf#${symbol}`;
+        document.getElementById('qaComp').href  = `/comparator`;
+
+        document.getElementById('qaWL').onclick = () => {
+          fetch('/api/watchlist', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol, note: 'Via Stock Analysis'})
+          })
+          .then(r => r.json())
+          .then(d => {
+            if (d.error && !d.error.includes('já existe')) { alert(d.error); return; }
+            const btn = document.getElementById('qaWL');
+            btn.textContent = '✅ Na Watchlist';
+            btn.style.background = '#8e44ad';
+            btn.style.color = '#fff';
+          })
+          .catch(() => alert('Erro ao adicionar à watchlist.'));
+        };
+
+        document.getElementById('qaAlert').onclick = () => {
+          const price = prompt(`Preço alvo para ${symbol} ($):`);
+          if (!price || isNaN(parseFloat(price))) return;
+          const dir = confirm('Alertar quando o preço SUBIR acima deste valor?\n(Cancela = quando descer abaixo)') ? 'above' : 'below';
+          fetch('/api/alerts', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol, target_price: parseFloat(price), direction: dir})
+          })
+          .then(r => r.json())
+          .then(d => {
+            if (d.error) { alert(d.error); return; }
+            alert(`Alerta criado: ${symbol} ${dir === 'above' ? '↑ acima' : '↓ abaixo'} de $${parseFloat(price).toFixed(2)}`);
+          })
+          .catch(() => alert('Erro ao criar alerta.'));
+        };
+
+        document.getElementById('quickActions').style.display = 'flex';
+      }
+
+      /* ── Mini chart ── */
+      function loadMiniChart(symbol) {
+        fetch(`/api/history?symbol=${symbol}&period=6mo`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.error || !data.close) return;
+
+            // Price info
+            const price = parseFloat(data.current_price);
+            const chg   = parseFloat(data.chg);
+            document.getElementById('miniPrice').textContent = `$${price.toFixed(2)}`;
+            const chgEl = document.getElementById('miniChg');
+            chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% (6M)`;
+            chgEl.className = 'mini-chg ' + (chg >= 0 ? 'pos' : 'neg');
+            document.getElementById('miniChartTitle').textContent = `${symbol} — 6 Meses`;
+
+            // Chart
+            if (miniChartInst) { miniChartInst.destroy(); miniChartInst = null; }
+            const up    = chg >= 0;
+            const color = up ? '#27ae60' : '#e74c3c';
+            const fill  = up ? 'rgba(39,174,96,.08)' : 'rgba(231,76,60,.08)';
+
+            miniChartInst = new Chart(
+              document.getElementById('miniCanvas').getContext('2d'), {
+              type: 'line',
+              data: {
+                labels: data.dates,
+                datasets: [{
+                  data: data.close,
+                  borderColor: color,
+                  backgroundColor: fill,
+                  fill: true, tension: 0.3,
+                  pointRadius: 0, borderWidth: 2,
+                }]
+              },
+              options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                  legend: {display: false},
+                  tooltip: {callbacks: {label: ctx => `$${ctx.parsed.y.toFixed(2)}`}}
+                },
+                scales: {
+                  x: {ticks: {maxTicksLimit: 8, font: {size: 10}}, grid: {color: '#f5f5f5'}},
+                  y: {ticks: {callback: v => '$' + v.toFixed(0), font: {size: 10}}, grid: {color: '#f5f5f5'}}
+                }
+              }
+            });
+
+            document.getElementById('miniChartPanel').style.display = 'block';
+          })
+          .catch(() => {}); // silently skip if history fails
       }
 
       function displayResults(d, symbol) {
@@ -426,11 +617,19 @@
         ]);
       }
 
-      // Enter key support
+      // Enter key support + auto-fill from watchlist shortcut
       document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('tickerInput').addEventListener('keydown', e => {
           if (e.key === 'Enter') fetchStockAnalysis();
         });
+
+        // Auto-fetch if coming from watchlist analysis shortcut
+        const autoSym = sessionStorage.getItem('analysisSymbol');
+        if (autoSym) {
+          sessionStorage.removeItem('analysisSymbol');
+          document.getElementById('tickerInput').value = autoSym;
+          fetchStockAnalysis();
+        }
       });
     </script>
   </body>

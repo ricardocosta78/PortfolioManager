@@ -36,7 +36,7 @@
         background: #fff; border-radius: 12px;
         padding: 18px 24px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
         margin-bottom: 18px;
-        display: none; align-items: center; gap: 24px; flex-wrap: wrap;
+        align-items: center; gap: 24px; flex-wrap: wrap;
       }
       .info-name   { font-size: 20px; font-weight: 700; color: #2c3e50; }
       .info-symbol { font-size: 13px; color: #95a5a6; margin-top: 2px; }
@@ -45,6 +45,37 @@
       .info-chg.pos { color: #27ae60; }
       .info-chg.neg { color: #e74c3c; }
       .info-sep    { flex: 1; }
+
+      /* Stats strip */
+      .stats-strip {
+        display: flex; gap: 0; flex-wrap: wrap;
+        background: #fff; border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        margin-bottom: 18px; overflow: hidden;
+      }
+      .stat-item {
+        flex: 1; min-width: 130px; padding: 14px 20px;
+        border-right: 1px solid #f0f0f0;
+      }
+      .stat-item:last-child { border-right: none; }
+      .stat-label { font-size: 10px; text-transform: uppercase; color: #95a5a6; font-weight: 700; letter-spacing: .4px; margin-bottom: 4px; }
+      .stat-value { font-size: 16px; font-weight: 700; color: #2c3e50; }
+      .stat-bar {
+        height: 4px; background: #ecf0f1; border-radius: 2px; margin-top: 6px; overflow: hidden;
+      }
+      .stat-bar-fill { height: 100%; background: #3498db; border-radius: 2px; }
+
+      /* Quick links in info card */
+      .info-links { display: flex; gap: 8px; margin-top: 8px; }
+      .info-link {
+        padding: 5px 12px; border-radius: 6px; font-size: 12px;
+        font-weight: 600; text-decoration: none; border: 1.5px solid;
+        transition: all .15s;
+      }
+      .info-link.analysis { color: #3498db; border-color: #3498db; }
+      .info-link.analysis:hover { background: #3498db; color: #fff; }
+      .info-link.dcf      { color: #27ae60; border-color: #27ae60; }
+      .info-link.dcf:hover { background: #27ae60; color: #fff; }
 
       /* Período */
       .period-bar {
@@ -131,12 +162,41 @@
         <div>
           <div class="info-name"   id="infoName"></div>
           <div class="info-symbol" id="infoSym"></div>
+          <div class="info-links">
+            <a id="linkAnalysis" href="#" class="info-link analysis">📊 Análise</a>
+            <a id="linkDCF"      href="#" class="info-link dcf">💡 DCF</a>
+          </div>
         </div>
-        <div>
+        <div class="info-sep"></div>
+        <div style="text-align:right">
           <div class="info-price" id="infoPrice"></div>
           <div class="info-chg"   id="infoChg"></div>
         </div>
-        <div class="info-sep"></div>
+      </div>
+
+      <!-- Stats strip -->
+      <div class="stats-strip" id="statsStrip" style="display:none">
+        <div class="stat-item">
+          <div class="stat-label">Mín. 52 Sem.</div>
+          <div class="stat-value" id="stat52L">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Preço / 52S</div>
+          <div class="stat-value" id="stat52Pct">—</div>
+          <div class="stat-bar"><div class="stat-bar-fill" id="stat52Bar" style="width:50%"></div></div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Máx. 52 Sem.</div>
+          <div class="stat-value" id="stat52H">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Volume Médio</div>
+          <div class="stat-value" id="statAvgVol">—</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Pontos no Período</div>
+          <div class="stat-value" id="statPoints">—</div>
+        </div>
       </div>
 
       <!-- Período + toggles MA -->
@@ -226,6 +286,32 @@
         chgEl.textContent = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}% no período`;
         chgEl.className = 'info-chg ' + (chg >= 0 ? 'pos' : 'neg');
         document.getElementById('infoCard').style.display = 'flex';
+
+        // Quick links
+        document.getElementById('linkAnalysis').href = `/stock_analysis#${data.symbol}`;
+        document.getElementById('linkDCF').href      = `/dcf#${data.symbol}`;
+        document.getElementById('linkAnalysis').onclick = () => {
+          sessionStorage.setItem('analysisSymbol', data.symbol);
+        };
+
+        // Stats strip
+        const prices = data.close.filter(v => v != null);
+        const low52  = Math.min(...prices);
+        const high52 = Math.max(...prices);
+        const cur    = parseFloat(data.current_price);
+        const pct52  = ((cur - low52) / (high52 - low52) * 100).toFixed(0);
+        const vols   = (data.volume || []).filter(v => v != null);
+        const avgVol = vols.length ? Math.round(vols.reduce((s,v) => s+v, 0) / vols.length) : null;
+
+        document.getElementById('stat52L').textContent   = `$${low52.toFixed(2)}`;
+        document.getElementById('stat52H').textContent   = `$${high52.toFixed(2)}`;
+        document.getElementById('stat52Pct').textContent = `${pct52}% do intervalo`;
+        document.getElementById('stat52Bar').style.width = `${pct52}%`;
+        document.getElementById('statAvgVol').textContent = avgVol
+          ? (avgVol >= 1e6 ? (avgVol/1e6).toFixed(1)+'M' : (avgVol/1e3).toFixed(0)+'K')
+          : '—';
+        document.getElementById('statPoints').textContent = `${prices.length} dias`;
+        document.getElementById('statsStrip').style.display = 'flex';
       }
 
       function renderPrice(data) {

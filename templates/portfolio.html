@@ -1,83 +1,320 @@
 <!DOCTYPE html>
 <html lang="pt">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gerenciador de Portfólio</title>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='css/style.css') }}"
-    />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script
-      src="{{ url_for('static', filename='js/portfolio.js') }}"
-      defer
-    ></script>
-    <script
-      src="{{ url_for('static', filename='js/chart.js') }}"
-      defer
-    ></script>
-  </head>
-  <body>
-    <nav class="main-nav">
-      <ul>
-        <li><a href="{{ url_for('index') }}">Home</a></li>
-        <li><a href="{{ url_for('portfolio') }}">Portfolio</a></li>
-        <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
-        <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
-        <li><a href="{{ url_for('transactions') }}">Histórico</a></li>
-        <li><a href="{{ url_for('alerts') }}">Alertas</a></li>
-        <li><a href="{{ url_for('comparator') }}">Comparador</a></li>
-        <li><a href="{{ url_for('chart_page') }}">Gráfico</a></li>
-        <li><a href="{{ url_for('watchlist') }}">Watchlist</a></li>
-      </ul>
-    </nav>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portfolio — Portfolio Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .page { width: 92%; max-width: 1300px; margin: 28px auto; }
 
-    <div class="container">
-      <!-- Banner de alertas disparados -->
-      <div id="alertBanner" style="display:none; background:#f39c12; color:#fff; padding:14px 20px;
-           border-radius:8px; margin-bottom:20px; font-weight:bold; font-size:15px;"></div>
+    /* ── Header ── */
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+    }
+    .page-header h1 { margin: 0; font-size: 26px; color: #2c3e50; }
+    .header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-primary {
+      padding: 10px 22px; background: #3498db; color: #fff;
+      border: none; border-radius: 8px; font-size: 14px;
+      font-weight: 600; cursor: pointer; width: auto; transition: background .2s;
+    }
+    .btn-primary:hover { background: #2980b9; }
+    .btn-export {
+      padding: 10px 22px; background: #27ae60; color: #fff;
+      border-radius: 8px; font-size: 14px; font-weight: 600;
+      text-decoration: none; display: flex; align-items: center; transition: background .2s;
+    }
+    .btn-export:hover { background: #219a52; }
 
-      <h1>Gerenciador de Portfólio</h1>
+    /* ── Alert banner ── */
+    #alertBanner {
+      display: none; background: #e67e22; color: #fff;
+      padding: 12px 18px; border-radius: 10px; margin-bottom: 18px;
+      font-weight: 700; font-size: 14px; box-shadow: 0 3px 10px rgba(230,126,34,.3);
+    }
+    #alertBanner ul { margin: 6px 0 0 18px; font-weight: 400; font-size: 13px; line-height: 1.7; }
 
-      <div class="actions" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
-        <button id="addStock">Adicionar Ação</button>
-        <a href="/export/portfolio" style="padding:8px 18px;background:#27ae60;color:#fff;border-radius:6px;font-size:14px;font-weight:600;text-decoration:none;">⬇ Exportar CSV</a>
+    /* ── KPI cards ── */
+    .kpi-row {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 14px; margin-bottom: 20px;
+    }
+    .kpi-card {
+      background: #fff; border-radius: 12px;
+      padding: 18px 22px; box-shadow: 0 2px 10px rgba(0,0,0,.07);
+      border-left: 4px solid #3498db;
+    }
+    .kpi-card.kpi-pl   { border-left-color: #2ecc71; }
+    .kpi-card.kpi-rent { border-left-color: #9b59b6; }
+    .kpi-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+      color: #95a5a6; font-weight: 700; margin-bottom: 6px;
+    }
+    .kpi-value { font-size: 22px; font-weight: 700; color: #2c3e50; }
+    .kpi-value.pos { color: #27ae60; }
+    .kpi-value.neg { color: #e74c3c; }
+
+    /* ── Panel ── */
+    .panel {
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.07);
+      padding: 20px 24px; margin-bottom: 20px;
+    }
+    .panel h2 {
+      margin: 0 0 14px; font-size: 13px; color: #2c3e50;
+      text-transform: uppercase; letter-spacing: .5px;
+      border-bottom: 2px solid #3498db; padding-bottom: 8px;
+    }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th {
+      text-align: left; padding: 11px 14px;
+      background: #2c3e50; color: #fff;
+      font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+    }
+    th:first-child { border-radius: 6px 0 0 0; }
+    th:last-child  { border-radius: 0 6px 0 0; }
+    td { padding: 11px 14px; border-bottom: 1px solid #f0f0f0; color: #2c3e50; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fafc; }
+
+    .sym-cell { font-weight: 700; font-size: 15px; }
+    .pos { color: #27ae60; font-weight: 600; }
+    .neg { color: #e74c3c; font-weight: 600; }
+
+    /* ── Row buttons ── */
+    .row-actions { display: flex; gap: 6px; }
+    .btn-sell-row {
+      padding: 5px 12px; background: #e67e22; color: #fff;
+      border: none; border-radius: 5px; font-size: 12px;
+      font-weight: 600; cursor: pointer; width: auto; transition: background .2s;
+    }
+    .btn-sell-row:hover { background: #d35400; }
+    .btn-del-row {
+      background: none; border: none; color: #e74c3c;
+      cursor: pointer; font-size: 16px; padding: 4px 6px;
+      border-radius: 5px; width: auto; transition: background .15s;
+    }
+    .btn-del-row:hover { background: #fdeaea; }
+
+    /* ── Loading / empty ── */
+    .loading-cell, .empty-cell {
+      text-align: center; color: #bdc3c7; padding: 50px; font-size: 14px;
+    }
+    .spinner-sm {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #ddd; border-top-color: #3498db;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Visualizations ── */
+    .viz-row {
+      display: grid; grid-template-columns: 1fr 1.6fr;
+      gap: 16px; margin-bottom: 20px;
+    }
+    .viz-row .panel { margin-bottom: 0; }
+    .chart-wrap { height: 270px; position: relative; }
+    #heatmapContainer { position: relative; height: 270px; overflow: hidden; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    .modal-box {
+      background: #fff; border-radius: 14px;
+      padding: 32px 36px; width: 100%; max-width: 400px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.18);
+    }
+    .modal-box h2 {
+      margin: 0 0 22px; font-size: 18px; color: #2c3e50;
+      border-bottom: 2px solid #3498db; padding-bottom: 10px;
+    }
+    .modal-form { display: flex; flex-direction: column; gap: 14px; margin-bottom: 22px; }
+    .fg { display: flex; flex-direction: column; gap: 5px; }
+    .fg label {
+      font-size: 11px; text-transform: uppercase; color: #7f8c8d;
+      font-weight: 700; letter-spacing: .4px;
+    }
+    .fg input {
+      padding: 10px 14px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+      font-size: 15px; background: #fafafa; box-sizing: border-box;
+      transition: border-color .2s, background .2s;
+    }
+    .fg input:focus { outline: none; border-color: #3498db; background: #fff; }
+    .field-hint { font-size: 12px; color: #95a5a6; margin-top: 2px; min-height: 16px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .btn-cancel {
+      padding: 10px 20px; background: #ecf0f1; color: #555;
+      border: none; border-radius: 8px; font-size: 14px;
+      font-weight: 600; cursor: pointer; width: auto;
+    }
+    .btn-cancel:hover { background: #dfe6e9; }
+    .btn-confirm {
+      padding: 10px 24px; background: #3498db; color: #fff;
+      border: none; border-radius: 8px; font-size: 14px;
+      font-weight: 600; cursor: pointer; width: auto; transition: background .2s;
+    }
+    .btn-confirm:hover { background: #2980b9; }
+    .btn-confirm.btn-sell-c { background: #e67e22; }
+    .btn-confirm.btn-sell-c:hover { background: #d35400; }
+
+    @media (max-width: 900px) {
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+      .viz-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      .kpi-row { grid-template-columns: 1fr 1fr; }
+      table { font-size: 12px; }
+      th, td { padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="main-nav">
+    <ul>
+      <li><a href="{{ url_for('index') }}">Home</a></li>
+      <li><a href="{{ url_for('portfolio') }}">Portfolio</a></li>
+      <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
+      <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
+      <li><a href="{{ url_for('transactions') }}">Histórico</a></li>
+      <li><a href="{{ url_for('alerts') }}">Alertas</a></li>
+      <li><a href="{{ url_for('comparator') }}">Comparador</a></li>
+      <li><a href="{{ url_for('chart_page') }}">Gráfico</a></li>
+      <li><a href="{{ url_for('watchlist') }}">Watchlist</a></li>
+    </ul>
+  </nav>
+
+  <div class="page">
+    <!-- Alert Banner -->
+    <div id="alertBanner"></div>
+
+    <!-- Header -->
+    <div class="page-header">
+      <h1>Portfolio</h1>
+      <div class="header-actions">
+        <button class="btn-primary" id="btnAddStock">+ Adicionar Ação</button>
+        <a class="btn-export" href="/export/portfolio">⬇ Exportar CSV</a>
       </div>
+    </div>
 
+    <!-- KPI Cards -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Investido</div>
+        <div class="kpi-value" id="kpiInvested">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Valor Atual</div>
+        <div class="kpi-value" id="kpiCurrent">—</div>
+      </div>
+      <div class="kpi-card kpi-pl">
+        <div class="kpi-label">Ganho / Perda</div>
+        <div class="kpi-value" id="kpiPL">—</div>
+      </div>
+      <div class="kpi-card kpi-rent">
+        <div class="kpi-label">Rentabilidade</div>
+        <div class="kpi-value" id="kpiPct">—</div>
+      </div>
+    </div>
+
+    <!-- Portfolio Table -->
+    <div class="panel">
       <table id="portfolioTable">
         <thead>
           <tr>
-            <th>Símbolo</th>
-            <th>Quantidade</th>
-            <th>Preço de Compra</th>
-            <th>Preço Atual</th>
-            <th>Total de Compra</th>
-            <th>Margem (Lucro/Perda)</th>
-            <th>% Lucro/Perda</th>
-            <th>% do Portfólio</th>
+            <th>Ticker</th>
+            <th>Qtd.</th>
+            <th>P. Médio ($)</th>
+            <th>P. Atual ($)</th>
+            <th>Investido ($)</th>
+            <th>Ganho/Perda ($)</th>
+            <th>G/P (%)</th>
+            <th>% Port.</th>
+            <th></th>
           </tr>
         </thead>
-        <tbody>
-          <!-- As linhas serão adicionadas aqui via JavaScript -->
+        <tbody id="portfolioBody">
+          <tr>
+            <td colspan="9" class="loading-cell">
+              <span class="spinner-sm"></span>A carregar portfólio...
+            </td>
+          </tr>
         </tbody>
       </table>
-      <!-- Adicione isso após sua tabela -->
-      <div class="visualizations-container">
-        <div class="chart-container">
-          <canvas id="portfolioChart"></canvas>
-        </div>
-        <div id="heatmapContainer" class="heatmap-container">
-          <!-- Os boxes do heatmap serão adicionados aqui via JavaScript -->
-        </div>
+    </div>
+
+    <!-- Visualizations -->
+    <div class="viz-row">
+      <div class="panel">
+        <h2>Composição do Portfolio</h2>
+        <div class="chart-wrap"><canvas id="portfolioChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>Performance das Posições</h2>
+        <div id="heatmapContainer"></div>
       </div>
     </div>
-    <script>
-      // Initialize visualizations when the page loads
-      document.addEventListener(
-        'DOMContentLoaded',
-        updatePortfolioVisualizations
-      );
-    </script>
-  </body>
+  </div>
+
+  <!-- Modal: Adicionar Ação -->
+  <div id="modalAdd" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <h2>Adicionar Ação</h2>
+      <div class="modal-form">
+        <div class="fg">
+          <label>Ticker</label>
+          <input id="mSym" placeholder="ex: AAPL" maxlength="10" autocomplete="off" />
+        </div>
+        <div class="fg">
+          <label>Quantidade</label>
+          <input id="mQty" type="number" placeholder="ex: 10" min="0.001" step="any" />
+        </div>
+        <div class="fg">
+          <label>Preço de Compra ($)</label>
+          <input id="mPrice" type="number" placeholder="ex: 150.00" min="0.01" step="any" />
+          <div class="field-hint" id="mPriceHint"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal('modalAdd')">Cancelar</button>
+        <button class="btn-confirm" onclick="confirmAddStock()">Adicionar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Vender Ação -->
+  <div id="modalSell" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <h2>Vender <span id="sellSymLabel"></span></h2>
+      <div class="modal-form">
+        <div class="fg">
+          <label>Quantidade a Vender</label>
+          <input id="sQty" type="number" placeholder="ex: 5" min="0.001" step="any" />
+          <div class="field-hint" id="sMaxHint"></div>
+        </div>
+        <div class="fg">
+          <label>Preço de Venda ($)</label>
+          <input id="sPrice" type="number" placeholder="ex: 180.00" min="0.01" step="any" />
+          <div class="field-hint" id="sCurHint"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal('modalSell')">Cancelar</button>
+        <button class="btn-confirm btn-sell-c" onclick="confirmSell()">Vender</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/portfolio.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/chart.js') }}"></script>
+</body>
 </html>

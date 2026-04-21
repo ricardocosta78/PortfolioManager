@@ -54,30 +54,31 @@
 
       /* ── Heatmap ── */
       .heatmap {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-        min-height: 280px;
+        position: relative;
+        width: 100%;
+        height: 280px;
+        overflow: hidden;
+        border-radius: 6px;
       }
       .hm-box {
+        position: absolute;
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        border-radius: 8px;
+        border-radius: 4px;
         color: #fff;
         font-weight: bold;
         text-align: center;
         cursor: default;
-        transition: transform 0.15s, box-shadow 0.15s;
-        padding: 6px;
+        overflow: hidden;
         box-sizing: border-box;
+        transition: filter 0.15s, z-index 0s;
       }
-      .hm-box:hover { transform: scale(1.06); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-      .hm-symbol  { font-size: 13px; }
-      .hm-pct     { font-size: 11px; opacity: .85; }
-      .hm-perf    { font-size: 12px; margin-top: 2px; }
+      .hm-box:hover { filter: brightness(1.15); z-index: 10; }
+      .hm-symbol  { font-size: 13px; line-height: 1.2; }
+      .hm-pct     { font-size: 11px; opacity: .85; margin-top: 2px; }
+      .hm-perf    { font-size: 11px; margin-top: 1px; }
 
       /* ── Fila inferior: tabela + quick links ── */
       .bottom-row {
@@ -256,45 +257,119 @@
         });
       }
 
-      /* ── Heatmap ── */
+      /* ── Heatmap – Squarified Treemap ── */
       function perfColor(pct) {
-        if (pct === null) return '#95a5a6';
-        if (pct >= 15)  return '#0e6b0e';
-        if (pct >= 8)   return '#1a9e1a';
+        if (pct === null) return '#7f8c8d';
+        if (pct >= 15)  return '#0a5c0a';
+        if (pct >= 8)   return '#187018';
         if (pct >= 3)   return '#27ae60';
         if (pct >= 0)   return '#52c97a';
         if (pct >= -3)  return '#e74c3c';
         if (pct >= -8)  return '#c0392b';
-        return '#922b21';
+        return '#7b241c';
+      }
+
+      /* Squarified treemap algorithm.
+         items: [{value, ...}], already sorted desc.
+         Returns [{item, x, y, w, h}]. */
+      function squarify(items, x, y, w, h) {
+        const result = [];
+        if (!items.length || w <= 0 || h <= 0) return result;
+
+        const totalArea = w * h;
+        const totalVal  = items.reduce((s, i) => s + i.value, 0);
+        const scaled    = items.map(i => ({ orig: i, a: (i.value / totalVal) * totalArea }));
+
+        function worstRatio(row, shortSide) {
+          const s  = row.reduce((sum, r) => sum + r.a, 0);
+          const rT = s / shortSide;   // row thickness
+          return row.reduce((m, r) => {
+            const len = r.a / rT;
+            return Math.max(m, Math.max(len / rT, rT / len));
+          }, 0);
+        }
+
+        function layout(items, x, y, w, h) {
+          if (!items.length) return;
+          const short = Math.min(w, h);
+          let row = [], rest = items;
+
+          while (rest.length) {
+            const candidate = [...row, rest[0]];
+            if (!row.length || worstRatio(candidate, short) <= worstRatio(row, short)) {
+              row  = candidate;
+              rest = rest.slice(1);
+            } else { break; }
+          }
+
+          // Lay out current row
+          const rowSum = row.reduce((s, r) => s + r.a, 0);
+          const thick  = rowSum / short;
+
+          if (w >= h) {                     // vertical strip on left
+            let cy = y;
+            row.forEach(r => {
+              const rh = r.a / thick;
+              result.push({ item: r.orig, x, y: cy, w: thick, h: rh });
+              cy += rh;
+            });
+            layout(rest, x + thick, y, w - thick, h);
+          } else {                          // horizontal strip on top
+            let cx = x;
+            row.forEach(r => {
+              const rw = r.a / thick;
+              result.push({ item: r.orig, x: cx, y, w: rw, h: thick });
+              cx += rw;
+            });
+            layout(rest, x, y + thick, w, h - thick);
+          }
+        }
+
+        layout(scaled, x, y, w, h);
+        return result;
       }
 
       function renderHeatmap(stocks) {
         const container = document.getElementById('heatmap');
         container.innerHTML = '';
+        if (!stocks.length) {
+          container.innerHTML = '<p style="color:#999;text-align:center;padding:40px">Sem ações no portfólio.</p>';
+          return;
+        }
 
-        const totalVal = stocks.reduce((s, x) => s + (x.current_value || x.invested), 0);
+        const W = container.clientWidth  || 400;
+        const H = container.clientHeight || 280;
+        const GAP = 3;
 
-        stocks.forEach(stock => {
-          const weight = ((stock.current_value || stock.invested) / totalVal) * 100;
-          const size   = Math.max(Math.sqrt(weight) * 32, 64);
+        const total = stocks.reduce((s, x) => s + (x.current_value || x.invested), 0);
+        const items = stocks
+          .map(s => ({ stock: s, value: s.current_value || s.invested }))
+          .sort((a, b) => b.value - a.value);
+
+        const rects = squarify(items, 0, 0, W, H);
+
+        rects.forEach(({ item, x, y, w, h }) => {
+          const { stock } = item;
+          const pct    = stock.profit_loss_pct;
+          const perf   = pct !== null ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—';
+          const weight = (item.value / total * 100).toFixed(1);
+          const fs     = Math.max(Math.min((Math.min(w, h) * 0.22), 15), 9);
 
           const box = document.createElement('div');
           box.className = 'hm-box';
-          box.style.width  = size + 'px';
-          box.style.height = size + 'px';
-          box.style.backgroundColor = perfColor(stock.profit_loss_pct);
-          box.style.fontSize = size < 75 ? '11px' : '13px';
+          box.style.left            = (x + GAP / 2) + 'px';
+          box.style.top             = (y + GAP / 2) + 'px';
+          box.style.width           = (w - GAP) + 'px';
+          box.style.height          = (h - GAP) + 'px';
+          box.style.backgroundColor = perfColor(pct);
 
-          const perf = stock.profit_loss_pct !== null
-            ? (stock.profit_loss_pct >= 0 ? '+' : '') + stock.profit_loss_pct.toFixed(2) + '%'
-            : '—';
+          if (w > 40 && h > 24) {
+            box.innerHTML = `<div class="hm-symbol" style="font-size:${fs}px">${stock.symbol}</div>`
+              + (h > 44 ? `<div class="hm-perf" style="font-size:${fs * .85}px">${perf}</div>` : '')
+              + (h > 62 ? `<div class="hm-pct"  style="font-size:${fs * .75}px">${weight}%</div>` : '');
+          }
 
-          box.innerHTML = `
-            <div class="hm-symbol">${stock.symbol}</div>
-            <div class="hm-pct">${weight.toFixed(1)}%</div>
-            <div class="hm-perf">${perf}</div>`;
-
-          box.title = `${stock.symbol} — Lucro/Perda: ${perf}`;
+          box.title = `${stock.symbol}  |  L/P: ${perf}  |  Peso: ${weight}%`;
           container.appendChild(box);
         });
       }

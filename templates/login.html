@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — Portfolio Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #f0f2f5;
+      margin: 0;
+    }
+    .login-box {
+      background: #fff;
+      padding: 40px;
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 380px;
+    }
+    .login-box h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      color: #2c3e50;
+      text-align: center;
+    }
+    .login-box p.subtitle {
+      text-align: center;
+      color: #7f8c8d;
+      margin: 0 0 28px;
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #34495e;
+      margin-bottom: 6px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 15px;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+    .remember {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 20px;
+    }
+    .btn-login {
+      width: 100%;
+      padding: 12px;
+      background: #3498db;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-login:hover { background: #2980b9; }
+    .alert {
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .alert-error   { background: #fdf2f2; color: #c0392b; border: 1px solid #e74c3c; }
+    .alert-info    { background: #eaf4fb; color: #2471a3; border: 1px solid #3498db; }
+    .alert-success { background: #eafaf1; color: #1e8449; border: 1px solid #27ae60; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h1>Portfolio Manager</h1>
+    <p class="subtitle">Faz login para continuar</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('login') }}">
+      <div class="form-group">
+        <label for="username">Utilizador</label>
+        <input type="text" id="username" name="username" required autofocus />
+      </div>
+      <div class="form-group">
+        <label for="password">Palavra-passe</label>
+        <input type="password" id="password" name="password" required />
+      </div>
+      <label class="remember">
+        <input type="checkbox" name="remember" /> Manter sessão
+      </label>
+      <button type="submit" class="btn-login">Entrar</button>
+    </form>
+  </div>
+</body>
+</html>

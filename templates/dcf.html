@@ -1,39 +1,394 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DCF Valuation Calculator</title>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='css/style.css') }}"
-    />
-  </head>
-  <body>
-    <nav class="main-nav">
-      <ul>
-        <li><a href="{{ url_for('index') }}">Home</a></li>
-        <li><a href="{{ url_for('portfolio') }}">Portfolio</a></li>
-        <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
-        <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
-        <li><a href="{{ url_for('transactions') }}">Histórico</a></li>
-        <li><a href="{{ url_for('alerts') }}">Alertas</a></li>
-        <li><a href="{{ url_for('comparator') }}">Comparador</a></li>
-        <li><a href="{{ url_for('chart_page') }}">Gráfico</a></li>
-        <li><a href="{{ url_for('watchlist') }}">Watchlist</a></li>
-      </ul>
-    </nav>
-    <div class="container">
-      <h1>Valor Intrinsico</h1>
-      <form id="dcfForm">
-        <label for="stockSymbol">Ticker Symbol:</label>
-        <input type="text" id="stockSymbol" name="stockSymbol" required />
-        <button type="submit">Calculate</button>
-      </form>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Valor Intrínseco — Portfolio Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .page { width: 92%; max-width: 1200px; margin: 28px auto; }
 
-      <div id="resultado" class="result-container"></div>
+    /* ── Search bar ── */
+    .search-card {
+      background: #fff; border-radius: 12px;
+      padding: 24px 28px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+      margin-bottom: 24px;
+    }
+    .search-card h1 { margin: 0 0 18px; font-size: 22px; color: #2c3e50; }
+    .search-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+    .fg { display: flex; flex-direction: column; gap: 5px; }
+    .fg label { font-size: 11px; text-transform: uppercase; color: #95a5a6; font-weight: 700; letter-spacing: .4px; }
+    .fg input {
+      padding: 11px 16px; border: 1.5px solid #e0e0e0; border-radius: 8px;
+      font-size: 16px; width: 200px; text-transform: uppercase;
+      background: #fafafa; box-sizing: border-box;
+      transition: border-color .2s, background .2s;
+    }
+    .fg input:focus { outline: none; border-color: #3498db; background: #fff; }
+    .btn-calc {
+      padding: 11px 28px; background: #3498db; color: #fff;
+      border: none; border-radius: 8px; font-size: 15px;
+      font-weight: 600; cursor: pointer; width: auto; height: 46px;
+      transition: background .2s;
+    }
+    .btn-calc:hover { background: #2980b9; }
+    .btn-calc:disabled { background: #bdc3c7; cursor: default; }
+
+    /* ── Assumption sliders ── */
+    .sliders-row {
+      display: flex; gap: 24px; flex-wrap: wrap;
+      margin-top: 20px; padding-top: 18px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .slider-group { display: flex; flex-direction: column; gap: 6px; min-width: 180px; flex: 1; }
+    .slider-group label {
+      font-size: 11px; text-transform: uppercase; color: #95a5a6;
+      font-weight: 700; letter-spacing: .4px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .slider-group label span {
+      font-size: 13px; font-weight: 700; color: #2c3e50;
+      text-transform: none; letter-spacing: 0;
+    }
+    .slider-group input[type=range] {
+      -webkit-appearance: none; width: 100%; height: 5px;
+      border-radius: 3px; background: #e0e0e0; cursor: pointer; border: none;
+      outline: none;
+    }
+    .slider-group input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px;
+      border-radius: 50%; background: #3498db; cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,.25);
+    }
+    .slider-auto-badge {
+      font-size: 10px; background: #eaf4fb; color: #2980b9;
+      border-radius: 4px; padding: 1px 6px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .3px;
+    }
+
+    /* ── Loading ── */
+    #loadingState {
+      display: none; text-align: center; padding: 60px 20px;
+      background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.08);
+      margin-bottom: 24px;
+    }
+    .spinner-lg {
+      display: inline-block; width: 44px; height: 44px;
+      border: 4px solid #e0e0e0; border-top-color: #3498db;
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loadingState p { margin: 14px 0 0; color: #7f8c8d; font-size: 14px; }
+
+    /* ── Error ── */
+    #errorState {
+      display: none; background: #fdf2f2; border: 1px solid #e74c3c;
+      border-radius: 12px; padding: 20px 24px; margin-bottom: 24px;
+      color: #c0392b; font-size: 14px;
+    }
+
+    /* ── Results ── */
+    #results { display: none; }
+
+    /* Verdict banner */
+    .verdict-banner {
+      border-radius: 14px; padding: 22px 28px;
+      margin-bottom: 20px; display: flex; align-items: center;
+      gap: 20px; flex-wrap: wrap;
+      box-shadow: 0 4px 16px rgba(0,0,0,.1);
+    }
+    .verdict-banner.undervalued   { background: linear-gradient(135deg, #1e8449, #27ae60); }
+    .verdict-banner.slight-under  { background: linear-gradient(135deg, #1a7a32, #2ecc71); }
+    .verdict-banner.overvalued    { background: linear-gradient(135deg, #922b21, #e74c3c); }
+    .verdict-banner.slight-over   { background: linear-gradient(135deg, #7d6608, #f39c12); }
+    .verdict-icon   { font-size: 48px; line-height: 1; }
+    .verdict-body   { flex: 1; }
+    .verdict-title  { font-size: 26px; font-weight: 800; color: #fff; letter-spacing: .5px; }
+    .verdict-sub    { font-size: 14px; color: rgba(255,255,255,.85); margin-top: 4px; }
+    .verdict-margin {
+      font-size: 36px; font-weight: 800; color: #fff;
+      text-align: right; white-space: nowrap;
+    }
+    .verdict-margin span { display: block; font-size: 12px; font-weight: 400; opacity: .8; text-align: right; }
+
+    /* KPI cards */
+    .kpi-row {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 14px; margin-bottom: 20px;
+    }
+    .kpi-card {
+      background: #fff; border-radius: 12px;
+      padding: 18px 22px; box-shadow: 0 2px 10px rgba(0,0,0,.07);
+      border-left: 4px solid #3498db;
+    }
+    .kpi-card.kpi-dcf   { border-left-color: #27ae60; }
+    .kpi-card.kpi-mos   { border-left-color: #9b59b6; }
+    .kpi-card.kpi-wacc  { border-left-color: #e67e22; }
+    .kpi-label { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: #95a5a6; font-weight: 700; margin-bottom: 6px; }
+    .kpi-value { font-size: 24px; font-weight: 700; color: #2c3e50; }
+    .kpi-value.pos { color: #27ae60; }
+    .kpi-value.neg { color: #e74c3c; }
+    .kpi-value.warn { color: #e67e22; }
+    .kpi-sub   { font-size: 12px; color: #95a5a6; margin-top: 4px; }
+
+    /* Middle row: chart + WACC */
+    .mid-row {
+      display: grid; grid-template-columns: 1.4fr 1fr;
+      gap: 16px; margin-bottom: 20px;
+    }
+
+    /* Panel */
+    .panel {
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,.07);
+      padding: 22px 24px;
+    }
+    .panel h2 {
+      margin: 0 0 16px; font-size: 13px; color: #2c3e50;
+      text-transform: uppercase; letter-spacing: .5px;
+      border-bottom: 2px solid #3498db; padding-bottom: 8px;
+    }
+    .chart-wrap { height: 240px; position: relative; }
+
+    /* WACC breakdown */
+    .wacc-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 9px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px;
+    }
+    .wacc-row:last-child { border-bottom: none; }
+    .wacc-label { color: #7f8c8d; }
+    .wacc-val   { font-weight: 600; color: #2c3e50; }
+    .capital-bar {
+      height: 10px; border-radius: 5px; overflow: hidden;
+      display: flex; margin: 12px 0 6px; background: #ecf0f1;
+    }
+    .capital-bar-eq  { background: #3498db; height: 100%; border-radius: 5px 0 0 5px; }
+    .capital-bar-dbt { background: #e74c3c; height: 100%; border-radius: 0 5px 5px 0; }
+    .capital-legend {
+      display: flex; gap: 16px; font-size: 12px; color: #555; margin-bottom: 12px;
+    }
+    .dot-blue { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #3498db; margin-right: 4px; }
+    .dot-red  { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #e74c3c; margin-right: 4px; }
+
+    /* Assumptions panel */
+    .assumptions-row {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 14px; margin-bottom: 20px;
+    }
+    .assumption-card {
+      background: #fff; border-radius: 12px;
+      padding: 16px 20px; box-shadow: 0 2px 10px rgba(0,0,0,.07);
+      text-align: center;
+    }
+    .assumption-label { font-size: 11px; text-transform: uppercase; color: #95a5a6; font-weight: 700; margin-bottom: 8px; }
+    .assumption-value { font-size: 20px; font-weight: 700; color: #2c3e50; }
+    .assumption-hint  { font-size: 11px; color: #bdc3c7; margin-top: 4px; }
+
+    /* Price target bar */
+    .price-bar-wrap { margin-top: 16px; }
+    .price-bar-labels {
+      display: flex; justify-content: space-between;
+      font-size: 11px; color: #95a5a6; margin-bottom: 4px;
+    }
+    .price-bar-track {
+      height: 12px; background: #ecf0f1; border-radius: 6px;
+      position: relative; overflow: visible;
+    }
+    .price-bar-fill {
+      height: 100%; background: linear-gradient(90deg, #e74c3c, #27ae60);
+      border-radius: 6px; transition: width .6s ease;
+    }
+    .price-bar-marker {
+      position: absolute; top: -4px; transform: translateX(-50%);
+      width: 20px; height: 20px; border-radius: 50%;
+      background: #2c3e50; border: 3px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,.25);
+    }
+    .price-bar-marker-label {
+      position: absolute; top: 20px; transform: translateX(-50%);
+      font-size: 11px; font-weight: 700; color: #2c3e50; white-space: nowrap;
+    }
+
+    @media (max-width: 900px) {
+      .kpi-row         { grid-template-columns: repeat(2, 1fr); }
+      .mid-row         { grid-template-columns: 1fr; }
+      .assumptions-row { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 560px) {
+      .assumptions-row { grid-template-columns: 1fr; }
+      .fg input { width: 160px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="main-nav">
+    <ul>
+      <li><a href="{{ url_for('index') }}">Home</a></li>
+      <li><a href="{{ url_for('portfolio') }}">Portfolio</a></li>
+      <li><a href="{{ url_for('stock_analysis') }}">Stock Analysis</a></li>
+      <li><a href="{{ url_for('dcf') }}">Valor Intrínseco</a></li>
+      <li><a href="{{ url_for('transactions') }}">Histórico</a></li>
+      <li><a href="{{ url_for('alerts') }}">Alertas</a></li>
+      <li><a href="{{ url_for('comparator') }}">Comparador</a></li>
+      <li><a href="{{ url_for('chart_page') }}">Gráfico</a></li>
+      <li><a href="{{ url_for('watchlist') }}">Watchlist</a></li>
+    </ul>
+  </nav>
+
+  <div class="page">
+
+    <!-- Search -->
+    <div class="search-card">
+      <h1>Valor Intrínseco (DCF)</h1>
+      <div class="search-row">
+        <div class="fg">
+          <label>Ticker</label>
+          <input type="text" id="tickerInput" placeholder="ex: AAPL" maxlength="10" autocomplete="off" />
+        </div>
+        <button class="btn-calc" id="btnCalc" onclick="runValuation()">Calcular</button>
+      </div>
+
+      <!-- Assumption sliders -->
+      <div class="sliders-row">
+        <div class="slider-group">
+          <label>
+            Retorno Mercado (Rm)
+            <span id="rmVal">—</span>
+          </label>
+          <input type="range" id="sliderRm" min="5" max="20" step="0.5" value="10"
+                 oninput="updateSliderLabels()" />
+          <div style="font-size:11px;color:#95a5a6;margin-top:2px">
+            <span class="slider-auto-badge">AUTO</span>
+            calculado do S&amp;P 500 (10 anos) — ajusta para cenários alternativos
+          </div>
+        </div>
+        <div class="slider-group">
+          <label>
+            Crescimento FCF
+            <span id="growthVal">—</span>
+          </label>
+          <input type="range" id="sliderGrowth" min="-20" max="150" step="0.5" value="10"
+                 oninput="updateSliderLabels()" />
+          <div style="font-size:11px;color:#95a5a6;margin-top:2px">
+            <span class="slider-auto-badge">AUTO</span>
+            estimativa analistas — ajusta para cenário conservador/optimista
+          </div>
+        </div>
+        <div class="slider-group">
+          <label>
+            Taxa Terminal
+            <span id="termVal">—</span>
+          </label>
+          <input type="range" id="sliderTerm" min="0.5" max="5" step="0.25" value="2"
+                 oninput="updateSliderLabels()" />
+          <div style="font-size:11px;color:#95a5a6;margin-top:2px">
+            crescimento perpétuo após os 5 anos de projeção
+          </div>
+        </div>
+      </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/dcf.js') }}"></script>
-  </body>
+    <!-- Loading -->
+    <div id="loadingState">
+      <div class="spinner-lg"></div>
+      <p>A calcular valor intrínseco... (pode demorar 10–20 segundos)</p>
+    </div>
+
+    <!-- Error -->
+    <div id="errorState"></div>
+
+    <!-- Results -->
+    <div id="results">
+
+      <!-- Verdict banner -->
+      <div class="verdict-banner" id="verdictBanner">
+        <div class="verdict-icon" id="verdictIcon"></div>
+        <div class="verdict-body">
+          <div class="verdict-title" id="verdictTitle"></div>
+          <div class="verdict-sub"  id="verdictSub"></div>
+        </div>
+        <div class="verdict-margin" id="verdictMargin">
+          <span>Margem de Segurança</span>
+        </div>
+      </div>
+
+      <!-- KPI cards -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">Preço Atual</div>
+          <div class="kpi-value" id="kpiPrice">—</div>
+          <div class="kpi-sub"  id="kpiName">—</div>
+        </div>
+        <div class="kpi-card kpi-dcf">
+          <div class="kpi-label">Valor Intrínseco (DCF)</div>
+          <div class="kpi-value" id="kpiDCF">—</div>
+          <div class="kpi-sub">por ação</div>
+        </div>
+        <div class="kpi-card kpi-mos">
+          <div class="kpi-label">Margem de Segurança</div>
+          <div class="kpi-value" id="kpiMOS">—</div>
+          <div class="kpi-sub">(DCF vs Preço)</div>
+        </div>
+        <div class="kpi-card kpi-wacc">
+          <div class="kpi-label">WACC (Custo Capital)</div>
+          <div class="kpi-value" id="kpiWACC">—</div>
+          <div class="kpi-sub">taxa de desconto</div>
+        </div>
+      </div>
+
+      <!-- Price position bar -->
+      <div class="panel" style="margin-bottom:20px">
+        <h2>Posição do Preço</h2>
+        <div class="price-bar-wrap">
+          <div class="price-bar-labels">
+            <span id="barLabelMin">—</span>
+            <span id="barLabelMax">—</span>
+          </div>
+          <div class="price-bar-track" id="barTrack">
+            <div class="price-bar-fill" id="barFill" style="width:50%"></div>
+            <div class="price-bar-marker" id="barMarker" style="left:50%">
+              <div class="price-bar-marker-label" id="barMarkerLabel">—</div>
+            </div>
+          </div>
+          <div style="height:28px"></div>
+        </div>
+      </div>
+
+      <!-- FCF chart + WACC breakdown -->
+      <div class="mid-row">
+        <div class="panel">
+          <h2>Projeção de Free Cash Flow (5 Anos)</h2>
+          <div class="chart-wrap"><canvas id="fcfChart"></canvas></div>
+        </div>
+        <div class="panel">
+          <h2>Estrutura de Capital (WACC)</h2>
+          <div id="waccBreakdown"></div>
+        </div>
+      </div>
+
+      <!-- Assumptions -->
+      <div class="assumptions-row">
+        <div class="assumption-card">
+          <div class="assumption-label">Taxa de Crescimento</div>
+          <div class="assumption-value" id="aGrowth">—</div>
+          <div class="assumption-hint">estimativa analistas (5 anos)</div>
+        </div>
+        <div class="assumption-card">
+          <div class="assumption-label">Taxa Terminal</div>
+          <div class="assumption-value" id="aTerminal">—</div>
+          <div class="assumption-hint">crescimento perpétuo</div>
+        </div>
+        <div class="assumption-card">
+          <div class="assumption-label">Valor Terminal</div>
+          <div class="assumption-value" id="aTermVal">—</div>
+          <div class="assumption-hint">valor perpetuidade descontado</div>
+        </div>
+      </div>
+
+    </div><!-- /results -->
+  </div>
+
+  <script src="{{ url_for('static', filename='js/dcf.js') }}"></script>
+</body>
 </html>

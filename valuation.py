@@ -155,19 +155,30 @@ def calculate_ttm_free_cash_flow(cash_flow_quarterly):
         print(f"Error calculating TTM Free Cash Flow: {e}")
         return None
 
-def calculate_wacc(info, financials, balance_sheet):
+def calculate_wacc(info, financials, balance_sheet, market_return_override=None):
     details = "WACC Calculation:\n"
+    components = {}
     try:
         risk_free_rate = get_risk_free_rate()
+        components['risk_free_rate'] = float(risk_free_rate)
         details += f"Risk-free rate: {risk_free_rate:.4f}\n"
 
         beta = calculate_beta(info.get('symbol', ''))
+        if beta is None:
+            beta = 1.0
+        components['beta'] = float(beta)
         details += f"Beta: {beta:.4f}\n"
 
-        market_return = get_market_return()
-        details += f"Market return: {market_return:.4f}\n"
+        if market_return_override is not None:
+            market_return = float(market_return_override)
+            details += f"Market return (manual override): {market_return:.4f}\n"
+        else:
+            market_return = get_market_return()
+            details += f"Market return (auto S&P500): {market_return:.4f}\n"
+        components['market_return'] = float(market_return)
 
         cost_of_equity = risk_free_rate + beta * (market_return - risk_free_rate)
+        components['cost_of_equity'] = float(cost_of_equity)
         details += f"Cost of equity: {cost_of_equity:.4f}\n\n"
 
         total_debt = balance_sheet.loc['Total Debt'].iloc[0] if 'Total Debt' in balance_sheet.index else (
@@ -176,6 +187,7 @@ def calculate_wacc(info, financials, balance_sheet):
         interest_expense = financials.loc['Interest Expense'].iloc[0] if 'Interest Expense' in financials.index else 0
 
         cost_of_debt = abs(interest_expense) / total_debt if total_debt != 0 else 0.05
+        components['cost_of_debt'] = float(cost_of_debt)
 
         details += f"Total debt: {total_debt:,.2f}\n"
         details += f"Interest expense: {interest_expense:,.2f}\n"
@@ -188,6 +200,7 @@ def calculate_wacc(info, financials, balance_sheet):
             tax_rate = 0.21
         else:
             tax_rate = income_tax_expense / income_before_tax if income_before_tax != 0 else 0.21
+        components['tax_rate'] = float(tax_rate)
 
         details += f"Income before tax: {income_before_tax:,.2f}\n"
         details += f"Income tax expense: {income_tax_expense:,.2f}\n"
@@ -201,6 +214,8 @@ def calculate_wacc(info, financials, balance_sheet):
 
         equity_weight = market_cap / total_capital
         debt_weight = total_debt / total_capital
+        components['equity_weight'] = float(equity_weight)
+        components['debt_weight'] = float(debt_weight)
 
         details += f"Market cap: {market_cap:,.2f}\n"
         details += f"Total capital: {total_capital:,.2f}\n"
@@ -211,7 +226,7 @@ def calculate_wacc(info, financials, balance_sheet):
 
         details += f"Calculated WACC: {wacc:.4f}\n"
 
-        return wacc, details
+        return wacc, details, components
     except Exception as e:
         raise ValueError(f"Error calculating WACC: {str(e)}\n\nDetails:\n{details}")
 
@@ -327,7 +342,7 @@ def get_ttm_free_cash_flow(ticker):
     except Exception as e:
         raise ValueError(f"Error calculating TTM FCF: {str(e)}\n\nDetails:\n{details}")
 
-def calculate_dcf(info, financials, ticker, wacc, growth_rate):
+def calculate_dcf(info, financials, ticker, wacc, growth_rate, terminal_growth_rate=0.02):
     details = "DCF Calculation:\n"
     try:
         current_fcf, ttm_details = get_ttm_free_cash_flow(ticker)
@@ -342,7 +357,6 @@ def calculate_dcf(info, financials, ticker, wacc, growth_rate):
             projected_fcf.append(fcf)
             details += f"Year {i} projected FCF: ${fcf:,.2f}\n"
 
-        terminal_growth_rate = 0.02
         terminal_value = projected_fcf[-1] * (1 + terminal_growth_rate) / (wacc - terminal_growth_rate)
 
         dcf_value = sum([cf / (1 + wacc)**(i + 1) for i, cf in enumerate(projected_fcf)]) + terminal_value / (1 + wacc)**5
@@ -355,37 +369,49 @@ def calculate_dcf(info, financials, ticker, wacc, growth_rate):
     except Exception as e:
         raise ValueError(f"Error calculating DCF: {str(e)}\n\nDetails:\n{details}")
 
-def calculate_stock_valuation(ticker):
-    growth = get_yahoo_growth(ticker)
-    print(f"Retrieved growth rate for {ticker}: {growth}")
-    growth_rate = growth
+def calculate_stock_valuation(ticker, market_return=None, growth_rate=None, terminal_growth_rate=None):
+    auto_growth = get_yahoo_growth(ticker)
+    print(f"Retrieved growth rate for {ticker}: {auto_growth}")
 
     stock, info, financials, cash_flow, balance_sheet, cash_flow_quarterly = get_stock_data(ticker)
-    
+
+    # Use override if provided, else auto, else fallback
     if growth_rate is None:
-        growth_rate = 0.03
+        growth_rate = auto_growth if auto_growth is not None else 0.03
+
+    if terminal_growth_rate is None:
+        terminal_growth_rate = 0.02
 
     if info is None:
         raise ValueError("Could not retrieve stock data")
 
-    current_price = info.get('currentPrice')
-    company_name = info.get('longName')
+    current_price = info.get('currentPrice') or info.get('regularMarketPrice')
+    company_name  = info.get('longName') or info.get('shortName') or ticker
     shares_outstanding = info.get('sharesOutstanding')
 
-    wacc, wacc_details = calculate_wacc(info, financials, balance_sheet)
-    dcf_value, terminal_value, projected_fcf, dcf_details = calculate_dcf(info, financials, ticker, wacc, growth_rate)
+    wacc, wacc_details, wacc_components = calculate_wacc(
+        info, financials, balance_sheet,
+        market_return_override=market_return
+    )
+    dcf_value, terminal_value, projected_fcf, dcf_details = calculate_dcf(
+        info, financials, ticker, wacc, growth_rate,
+        terminal_growth_rate=terminal_growth_rate
+    )
     dcf_value_per_share = calculate_intrinsic_value(dcf_value, shares_outstanding)
 
     cash_flow_projections = "\n".join([f"Year {i+1}: ${fcf:,.2f}" for i, fcf in enumerate(projected_fcf)])
 
     return {
         "company_name": company_name,
-        "current_price": current_price,
-        "dcf_value_per_share": dcf_value_per_share,
-        "wacc": wacc,
-        "growth_rate": growth_rate,
-        "terminal_growth_rate": 0.02,
-        "terminal_value": terminal_value,
+        "ticker": ticker.upper(),
+        "current_price": float(current_price) if current_price else None,
+        "dcf_value_per_share": float(dcf_value_per_share) if dcf_value_per_share else None,
+        "wacc": float(wacc),
+        "growth_rate": float(growth_rate),
+        "terminal_growth_rate": float(terminal_growth_rate),
+        "terminal_value": float(terminal_value),
+        "projected_fcf": [float(v) for v in projected_fcf],
+        "wacc_components": wacc_components,
         "cash_flow_projections": cash_flow_projections,
         "dcf_details": dcf_details,
         "wacc_details": wacc_details

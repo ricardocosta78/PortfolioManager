@@ -1,6 +1,8 @@
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, redirect, url_for, flash
 import yfinance as yf
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from valuation import calculate_stock_valuation
 from calculos import calculate_stock_metrics
 from collections import defaultdict
@@ -12,6 +14,12 @@ import io
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 
+# Flask-Login
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Faz login para aceder à app.'
+login_manager.login_message_category = 'info'
+
 # Configuração da base de dados
 # Render usa "postgres://" mas SQLAlchemy requer "postgresql://"
 DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///portfolio.db')
@@ -19,6 +27,22 @@ if DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 db = SQLAlchemy(app)
+
+# Modelo de utilizadores
+class User(UserMixin, db.Model):
+    id       = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+
+    def set_password(self, pw):
+        self.password_hash = generate_password_hash(pw)
+
+    def check_password(self, pw):
+        return check_password_hash(self.password_hash, pw)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
 
 # Modelo da tabela de portfólio
 class Stock(db.Model):
@@ -47,27 +71,80 @@ class Transaction(db.Model):
     total = db.Column(db.Float, nullable=False)
     date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-# Criação da base de dados
+# Criação da base de dados e utilizador padrão
 with app.app_context():
     db.create_all()
+    default_user = os.environ.get('ADMIN_USER', 'admin')
+    default_pass = os.environ.get('ADMIN_PASS', 'portfolio2026')
+    if not User.query.filter_by(username=default_user).first():
+        u = User(username=default_user)
+        u.set_password(default_pass)
+        db.session.add(u)
+        try:
+            db.session.commit()
+            print(f"Utilizador criado: {default_user} / {default_pass}")
+        except Exception:
+            db.session.rollback()
+
+# ── Autenticação ─────────────────────────────────────────────────────────────
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        user = User.query.filter_by(username=username).first()
+        if user and user.check_password(password):
+            login_user(user, remember=request.form.get('remember') == 'on')
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('index'))
+        flash('Utilizador ou palavra-passe incorretos.', 'error')
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+@app.route('/change_password', methods=['POST'])
+@login_required
+def change_password():
+    old_pw  = request.form.get('old_password', '')
+    new_pw  = request.form.get('new_password', '')
+    if not current_user.check_password(old_pw):
+        flash('Palavra-passe atual incorreta.', 'error')
+    elif len(new_pw) < 6:
+        flash('A nova palavra-passe deve ter pelo menos 6 caracteres.', 'error')
+    else:
+        current_user.set_password(new_pw)
+        db.session.commit()
+        flash('Palavra-passe alterada com sucesso.', 'success')
+    return redirect(url_for('index'))
 
 # Rota para a página inicial
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
 # Rota para a página de portfólio
 @app.route('/portfolio')
+@login_required
 def portfolio():
     return render_template('portfolio.html')
 
 # Rota para a página de análise de ações
 @app.route('/stock_analysis')
+@login_required
 def stock_analysis():
     return render_template('stock_analysis.html')
 
 # Rota para a página de cálculo DCF
 @app.route('/dcf')
+@login_required
 def dcf():
     return render_template('dcf.html')
 
@@ -75,9 +152,16 @@ def dcf():
 def calculate_valuation():
     data = request.json
     ticker = data.get('symbol')
-    
+    overrides = {
+        'market_return':        data.get('market_return'),
+        'growth_rate':          data.get('growth_rate'),
+        'terminal_growth_rate': data.get('terminal_growth_rate'),
+    }
+    # Only pass keys where user provided a value
+    overrides = {k: v for k, v in overrides.items() if v is not None}
+
     try:
-        result = calculate_stock_valuation(ticker)
+        result = calculate_stock_valuation(ticker, **overrides)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -103,7 +187,21 @@ def add_stock():
     new_stock = Stock(symbol=data['symbol'], quantity=data['quantity'], purchase_price=data['purchase_price'])
     db.session.add(new_stock)
     db.session.commit()
-    return jsonify({'message': 'Ação adicionada com sucesso!'}), 201
+    return jsonify({'message': 'Ação adicionada com sucesso!', 'id': new_stock.id}), 201
+
+# Rota para atualizar uma ação existente (quando se compra mais do mesmo)
+@app.route('/update_stock/<int:stock_id>', methods=['PUT'])
+def update_stock(stock_id):
+    stock = db.session.get(Stock, stock_id)
+    if not stock:
+        return jsonify({'error': 'Ação não encontrada.'}), 404
+    data = request.json
+    if 'quantity' in data:
+        stock.quantity = data['quantity']
+    if 'purchase_price' in data:
+        stock.purchase_price = data['purchase_price']
+    db.session.commit()
+    return jsonify({'message': 'Ação atualizada com sucesso!'})
 
 # Rota para remover uma ação do portfólio
 @app.route('/remove_stock/<int:stock_id>', methods=['DELETE'])
@@ -218,6 +316,7 @@ def portfolio_summary():
 
 # Rota para a página de histórico
 @app.route('/transactions')
+@login_required
 def transactions():
     return render_template('transactions.html')
 
@@ -225,16 +324,24 @@ def transactions():
 @app.route('/api/add_transaction', methods=['POST'])
 def add_transaction():
     data = request.json
+    # Accept optional date for manual entry
+    tx_date = datetime.utcnow()
+    if data.get('date'):
+        try:
+            tx_date = datetime.fromisoformat(data['date'])
+        except Exception:
+            pass
     t = Transaction(
         symbol=data['symbol'].upper(),
         action=data['action'],
-        quantity=data['quantity'],
-        price=data['price'],
-        total=data['quantity'] * data['price']
+        quantity=float(data['quantity']),
+        price=float(data['price']),
+        total=float(data['quantity']) * float(data['price']),
+        date=tx_date
     )
     db.session.add(t)
     db.session.commit()
-    return jsonify({'message': 'Transação registada com sucesso!'}), 201
+    return jsonify({'message': 'Transação registada com sucesso!', 'id': t.id}), 201
 
 # Rota para obter todas as transações
 @app.route('/api/transactions', methods=['GET'])
@@ -251,7 +358,8 @@ def get_transactions():
         'quantity': t.quantity,
         'price': t.price,
         'total': t.total,
-        'date': t.date.strftime('%d/%m/%Y %H:%M')
+        'date': t.date.strftime('%d/%m/%Y %H:%M'),
+        'date_iso': t.date.strftime('%Y-%m-%dT%H:%M:%S')
     } for t in txs])
 
 # Rota para apagar uma transação
@@ -273,6 +381,7 @@ class Watchlist(db.Model):
     added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 @app.route('/watchlist')
+@login_required
 def watchlist():
     return render_template('watchlist.html')
 
@@ -334,6 +443,7 @@ def watchlist_prices():
 # ── Gráfico Histórico ────────────────────────────────────────────────────────
 
 @app.route('/chart')
+@login_required
 def chart_page():
     return render_template('chart.html')
 
@@ -390,6 +500,7 @@ def get_history():
 # ── Comparador de Ações ──────────────────────────────────────────────────────
 
 @app.route('/comparator')
+@login_required
 def comparator():
     return render_template('comparator.html')
 
@@ -452,6 +563,7 @@ def compare_stocks():
 # ── Alertas de Preço ──────────────────────────────────────────────────────────
 
 @app.route('/alerts')
+@login_required
 def alerts():
     return render_template('alerts.html')
 
